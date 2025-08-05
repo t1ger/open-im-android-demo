@@ -2,386 +2,473 @@ package io.openim.android.ouicalling.vm
 
 import android.app.Application
 import android.content.Intent
-import android.os.Build
 import androidx.lifecycle.*
-import io.livekit.android.LiveKit
-import io.livekit.android.RoomOptions
+import androidx.lifecycle.viewModelScope
 import io.livekit.android.audio.AudioSwitchHandler
-import io.livekit.android.events.RoomEvent
-import io.livekit.android.events.collect
 import io.livekit.android.renderer.TextureViewRenderer
-import io.livekit.android.room.Room
 import io.livekit.android.room.participant.ConnectionQuality
-import io.livekit.android.room.participant.LocalParticipant
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.participant.RemoteParticipant
-import io.livekit.android.room.participant.VideoTrackPublishDefaults
-import io.livekit.android.room.track.*
-import io.livekit.android.room.track.video.ViewVisibility
+import io.livekit.android.room.track.VideoTrack
 import io.livekit.android.util.flow
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import com.github.ajalt.timberkt.Timber
-import livekit.LivekitRtc
-import kotlinx.coroutines.flow.collectLatest as collectLatest1
 
+// Manager导入
+import io.openim.android.ouicalling.manager.*
 
+// 群组通话相关导入
+import io.openim.android.ouicalling.entity.CallMemberState
+import io.openim.android.ouicalling.entity.GroupCallMember
+
+// 性能监控导入
+import io.openim.android.ouicalling.utils.VideoStreamMonitor
+
+/**
+ * 重构后的CallViewModel - 轻量级协调器
+ * 
+ * 架构说明:
+ * - CallViewModel: 协调器，负责Manager之间的协调和UI接口
+ * - CallRoomManager: 房间连接管理
+ * - MediaDeviceManager: 媒体设备控制
+ * - GroupCallManager: 群组通话逻辑
+ * - VideoBindingManager: 视频绑定管理
+ * - SpeakerManager: 扬声器管理
+ * - CoroutineScopeManager: 协程生命周期管理
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
-class CallViewModel(
-    application: Application
-) : AndroidViewModel(application) {
-    val room = LiveKit.create(
-        appContext = application,
-        options = RoomOptions(
-            adaptiveStream = true, dynacast = true,
-//            videoTrackPublishDefaults = VideoTrackPublishDefaults(
-//                videoCodec = VideoCodec.VP9.codecName
-//            )
-        ),
-    )
-
-    val audioHandler = room.audioHandler as AudioSwitchHandler
-
-    val allParticipants = room::remoteParticipants.flow.map { remoteParticipants ->
-        listOf<Participant>(room.localParticipant) + remoteParticipants.keys.sortedBy { it.value }.mapNotNull { remoteParticipants[it] }
-    }
-    val remoteParticipants = room::remoteParticipants.flow
+class CallViewModel(application: Application) : AndroidViewModel(application) {
+    
+    // ===== Manager组件 =====
+    private val roomManager = CallRoomManager(application)
+    private val deviceManager = MediaDeviceManager(roomManager.room, viewModelScope)
+    private val groupManager = GroupCallManager(roomManager.room, viewModelScope)  
+    private val videoManager = VideoBindingManager(roomManager.room, viewModelScope)
+    private val speakerManager = SpeakerManager(roomManager.room)
+    private val scopeManager = CoroutineScopeManager()
+    
+    // Week 2 Day 6: 多路视频流管理器
+    private val multiStreamManager = MultiStreamManager(roomManager.room, viewModelScope)
+    
+    // Week 2 Day 6: 视频流性能监控器
+    private val streamMonitor = VideoStreamMonitor(this)
+    
+    // ===== 音频处理器 =====
+    val audioHandler = roomManager.room.audioHandler as AudioSwitchHandler
+    
+    // ===== 参与者相关 =====
+    val allParticipants = speakerManager.allParticipants
+    val remoteParticipants = roomManager.room::remoteParticipants.flow
     var singleRemotePar: RemoteParticipant? = null
-
-    private val scopes = mutableListOf<CoroutineScope>()
-    private val mutableError = MutableStateFlow<Throwable?>(null)
-    val error = mutableError.hide()
-
-    private val mutablePrimarySpeaker = MutableStateFlow<Participant?>(null)
-    val primarySpeaker: StateFlow<Participant?> = mutablePrimarySpeaker
-
-    private val activeSpeakers = room::activeSpeakers.flow
-    val roomMetadata = room::metadata.flow
-
-    private var localScreencastTrack: LocalScreencastVideoTrack? = null
-
-    private val mutableMicEnabled = MutableLiveData(true)
-    val micEnabled = mutableMicEnabled.hide()
-
-    private val mutableCameraEnabled = MutableLiveData(true)
-    val cameraEnabled = mutableCameraEnabled.hide()
-
-    private val mutableFlipVideoButtonEnabled = MutableLiveData(true)
-    val flipButtonVideoEnabled = mutableFlipVideoButtonEnabled.hide()
-
-    private val mutableScreencastEnabled = MutableLiveData(false)
-    val screenshareEnabled = mutableScreencastEnabled.hide()
-
+    
+    // ===== 状态管理 =====
+    // 房间连接状态和错误
+    val error = roomManager.error
+    val connectionState = roomManager.connectionState
+    
+    // 主要扬声器
+    val primarySpeaker = speakerManager.primarySpeaker
+    val activeSpeakers = speakerManager.activeSpeakers
+    
+    // 媒体设备状态
+    val micEnabled = deviceManager.micEnabled
+    val cameraEnabled = deviceManager.cameraEnabled
+    val flipButtonVideoEnabled = deviceManager.flipVideoButtonEnabled
+    val screenshareEnabled = deviceManager.screencastEnabled
+    
+    // 群组通话状态
+    val isGroupCall = groupManager.isGroupCall
+    val groupMembers = groupManager.groupMembers
+    val groupParticipantChanges = groupManager.groupParticipantChanges
+    
+    // 多路视频流状态 (Week 2 Day 6)
+    val activeSpeakersMulti = multiStreamManager.activeSpeakers
+    val primarySpeakerMulti = multiStreamManager.primarySpeaker
+    val adaptiveQualityEnabled = multiStreamManager.adaptiveQualityEnabled
+    
+    // 性能监控状态 (Week 2 Day 6)
+    val monitoringState = streamMonitor.monitoringState
+    val performanceReport = streamMonitor.performanceReport
+    
+    // 房间元数据
+    val roomMetadata = roomManager.room::metadata.flow
+    
+    // 数据接收
     private val mutableDataReceived = MutableSharedFlow<String>()
     val dataReceived = mutableDataReceived
-
+    
+    // 权限管理
     private val mutablePermissionAllowed = MutableStateFlow(true)
     val permissionAllowed = mutablePermissionAllowed.hide()
 
-
+    // ===== 生命周期管理 =====
     init {
+        initializeEventListeners()
+    }
+    
+    /**
+     * 初始化事件监听器
+     */
+    private fun initializeEventListeners() {
         viewModelScope.launch {
-            // Collect any errors.
+            // 监听错误
             launch {
                 error.collect { Timber.e(it) }
             }
 
-            // Handle any changes in speakers.
+            // 处理扬声器变化
             launch {
-                combine(allParticipants, activeSpeakers) { participants, speakers -> participants to speakers }.collect { (participantsList, speakers) ->
-                    handlePrimarySpeaker(
-                        participantsList,
-                        speakers,
-                        room,
-                    )
+                combine(
+                    allParticipants, 
+                    speakerManager.activeSpeakers
+                ) { participants, speakers -> participants to speakers }
+                .collect { (participantsList, speakers) ->
+                    speakerManager.handlePrimarySpeaker(participantsList, speakers)
                 }
             }
 
+            // 处理房间事件
             launch {
-                room.events.collect {
-                    when (it) {
-                        is RoomEvent.FailedToConnect -> mutableError.value = it.error
-                        is RoomEvent.DataReceived -> {
-                            val identity = it.participant?.identity ?: "server"
-                            val message = it.data.toString(Charsets.UTF_8)
+                roomManager.room.events.collect { event ->
+                    when (event) {
+                        is io.livekit.android.events.RoomEvent.FailedToConnect -> {
+                            // 错误已由roomManager处理
+                        }
+                        is io.livekit.android.events.RoomEvent.DataReceived -> {
+                            val identity = event.participant?.identity ?: "server"
+                            val message = event.data.toString(Charsets.UTF_8)
                             mutableDataReceived.emit("$identity: $message")
                         }
-
                         else -> {
-                            Timber.e { "Room event: $it" }
+                            Timber.v { "[CallViewModel] Room event: $event" }
                         }
                     }
                 }
             }
-
         }
     }
 
-    private suspend fun collectTrackStats(event: RoomEvent.TrackSubscribed) {
-        val pub = event.publication
-        while (true) {
-            delay(10000)
-            if (pub.subscribed) {
-                val statsReport = pub.track?.getRTCStats() ?: continue
-                Timber.e { "stats for ${pub.sid}:" }
-
-                for (entry in statsReport.statsMap) {
-                    Timber.e { "${entry.key} = ${entry.value}" }
-                }
-            }
-        }
-    }
-
+    // ===== 房间连接管理接口 =====
+    
     lateinit var url: String
     lateinit var token: String
+    
+    /**
+     * 连接到房间
+     */
     suspend fun connectToRoom(url: String, token: String) {
-        this@CallViewModel.url = url
-        this@CallViewModel.token = token
-        try {
-            room.connect(
-                url = url,
-                token = token,
-            )
-            // Create and publish audio/video tracks
-            val localParticipant = room.localParticipant
-            localParticipant.setMicrophoneEnabled(true)
-            mutableMicEnabled.postValue(localParticipant.isMicrophoneEnabled())
-
-            localParticipant.setCameraEnabled(true)
-            mutableCameraEnabled.postValue(localParticipant.isCameraEnabled())
-
-            handlePrimarySpeaker(emptyList(), emptyList(), room)
-        } catch (e: Throwable) {
-            mutableError.value = e
-        }
-
+        this.url = url
+        this.token = token
+        roomManager.connectToRoom(url, token)
+        deviceManager.syncDeviceStates()
     }
-
-    private fun handlePrimarySpeaker(participantsList: List<Participant>, speakers: List<Participant>, room: Room?) {
-        var speaker = mutablePrimarySpeaker.value
-
-        // If speaker is local participant (due to defaults),
-        // attempt to find another remote speaker to replace with.
-        if (speaker is LocalParticipant) {
-            val remoteSpeaker = participantsList.filterIsInstance<RemoteParticipant>() // Try not to display local participant as speaker.
-                .firstOrNull()
-
-            if (remoteSpeaker != null) {
-                speaker = remoteSpeaker
-            }
+    
+    /**
+     * 断开连接
+     */
+    fun disconnect() = roomManager.disconnect()
+    
+    /**
+     * 重连
+     */
+    fun reconnect() {
+        viewModelScope.launch {
+            roomManager.reconnect()
         }
-
-        // If previous primary speaker leaves
-        if (!participantsList.contains(speaker)) {
-            // Default to another person in room, or local participant.
-            speaker = participantsList.filterIsInstance<RemoteParticipant>().firstOrNull() ?: room?.localParticipant
-        }
-
-        if (speakers.isNotEmpty() && !speakers.contains(speaker)) {
-            val remoteSpeaker = speakers.filterIsInstance<RemoteParticipant>() // Try not to display local participant as speaker.
-                .firstOrNull()
-
-            if (remoteSpeaker != null) {
-                speaker = remoteSpeaker
-            }
-        }
-
-        mutablePrimarySpeaker.value = speaker
     }
-
+    
+    // ===== 媒体设备控制接口 =====
+    
+    /**
+     * 设置麦克风开关
+     */
+    fun setMicEnabled(enabled: Boolean) = deviceManager.setMicEnabled(enabled)
+    
+    /**
+     * 设置摄像头开关
+     */
+    fun setCameraEnabled(enabled: Boolean) = deviceManager.setCameraEnabled(enabled)
+    
+    /**
+     * 切换摄像头
+     */
+    fun flipCamera() = deviceManager.flipCamera()
+    
+    /**
+     * 开始屏幕共享
+     */
+    fun startScreenCapture(mediaProjectionPermissionResultData: Intent) =
+        deviceManager.startScreenCapture(mediaProjectionPermissionResultData)
+    
+    /**
+     * 停止屏幕共享  
+     */
+    fun stopScreenCapture() = deviceManager.stopScreenCapture()
+    
+    // ===== 视频绑定管理接口 =====
+    
+    /**
+     * 绑定远程视频渲染器
+     */
     suspend fun bindRemoteViewRenderer(
-        viewRenderer: TextureViewRenderer, participant: Participant, scope: CoroutineScope
+        viewRenderer: TextureViewRenderer, 
+        participant: Participant, 
+        scope: CoroutineScope
+    ) = videoManager.bindRemoteViewRenderer(viewRenderer, participant, scope)
+    
+    /**
+     * 绑定视频轨道
+     */
+    fun bindVideoTrack(viewRenderer: TextureViewRenderer, videoTrack: VideoTrack) =
+        videoManager.bindVideoTrack(viewRenderer, videoTrack)
+    
+    /**
+     * 获取视频轨道
+     */
+    fun getVideoTrack(participant: Participant): VideoTrack? =
+        videoManager.getVideoTrack(participant)
+    
+    /**
+     * 为GroupMemberAdapter绑定群组成员视频渲染器
+     */
+    suspend fun bindGroupMemberVideoRenderer(
+        viewRenderer: TextureViewRenderer,
+        participantId: String,
+        scope: CoroutineScope
+    ) = videoManager.bindGroupMemberVideoRenderer(viewRenderer, participantId, groupManager)
+    
+    /**
+     * Java友好的非异步视频绑定方法
+     */
+    fun bindGroupMemberVideoRendererSync(
+        viewRenderer: TextureViewRenderer,
+        participantId: String
+    ) = videoManager.bindGroupMemberVideoRendererSync(viewRenderer, participantId, groupManager)
+    
+    /**
+     * 解绑群组成员视频渲染器
+     */
+    fun unbindGroupMemberVideoRenderer(viewRenderer: TextureViewRenderer) =
+        videoManager.unbindVideoRenderer(viewRenderer)
+    
+    // ===== 多路视频流管理接口 (Week 2 Day 6) =====
+    
+    /**
+     * 注册视频流到多流管理器
+     * @param participantId 参与者ID
+     * @param renderer 视频渲染器
+     * @param priority 流优先级
+     */
+    fun registerVideoStream(
+        participantId: String,
+        renderer: TextureViewRenderer,
+        priority: StreamPriority = StreamPriority.NORMAL
+    ) = multiStreamManager.registerVideoStream(participantId, renderer, priority)
+    
+    /**
+     * 注销视频流
+     */
+    fun unregisterVideoStream(participantId: String) = 
+        multiStreamManager.unregisterVideoStream(participantId)
+    
+    /**
+     * 更新流优先级
+     */
+    fun updateStreamPriority(participantId: String, priority: StreamPriority) =
+        multiStreamManager.updateStreamPriority(participantId, priority)
+    
+    /**
+     * 切换自适应质量控制
+     */
+    fun setAdaptiveQualityEnabled(enabled: Boolean) =
+        multiStreamManager.setAdaptiveQualityEnabled(enabled)
+    
+    /**
+     * 获取流统计信息
+     */
+    fun getStreamStatistics(): StreamStatistics =
+        multiStreamManager.getStreamStatistics()
+    
+    /**
+     * 开始性能监控
+     */
+    fun startPerformanceMonitoring() = 
+        streamMonitor.startMonitoring(viewModelScope)
+    
+    /**
+     * 停止性能监控
+     */
+    fun stopPerformanceMonitoring() = streamMonitor.stopMonitoring()
+    
+    /**
+     * 获取性能摘要
+     */
+    fun getPerformanceSummary() = streamMonitor.getPerformanceSummary()
+    
+    /**
+     * 获取LiveKit Room实例（兼容现有CallingVM调用）
+     */
+    fun getRoom() = roomManager.room
+    
+    // ===== 群组通话管理接口 =====
+    
+    /**
+     * 连接到群组房间
+     */
+    suspend fun connectToGroupRoom(
+        url: String,
+        token: String,
+        memberIds: List<String>,
+        callback: (Result<Boolean>) -> Unit
     ) {
-        // observe videoTracks changes.
-        val videoTrackPubFlow = participant::videoTrackPublications.flow.map { participant to it }.flatMapLatest { (participant, videoTracks) ->
-            // Prioritize any screenshare streams.
-            val trackPublication = participant.getTrackPublication(Track.Source.SCREEN_SHARE) ?: participant.getTrackPublication(Track.Source.CAMERA)
-            ?: videoTracks.firstOrNull()?.first
-            flowOf(trackPublication)
-        }
-        scope.launch {
-            videoTrackPubFlow.flatMapLatest { pub ->
-                if (pub != null) {
-                    pub::track.flow
-                } else {
-                    flowOf(null)
-                }
-            }.collectLatest1 { videoTrack ->
-                val videoTrack = videoTrack as? VideoTrack ?: return@collectLatest1
-
-                bindVideoTrack(viewRenderer, videoTrack)
-            }
-        }
+        this.url = url
+        this.token = token
+        groupManager.connectToGroupRoom(url, token, memberIds, callback)
+        deviceManager.syncDeviceStates()
     }
-
-    fun bindVideoTrack(
-        viewRenderer: TextureViewRenderer, videoTrack: VideoTrack
-    ) {
-        if (null != viewRenderer.tag) {
-            val lastTrack = viewRenderer.tag as VideoTrack
-//            if (videoTrack == lastTrack) return
-            lastTrack.removeRenderer(viewRenderer)
-        }
-        viewRenderer.tag = videoTrack
-        if (videoTrack is RemoteVideoTrack) {
-            videoTrack.addRenderer(
-                viewRenderer, ViewVisibility(viewRenderer.rootView)
-            )
-        } else {
-            videoTrack.addRenderer(viewRenderer)
-        }
+    
+    /**
+     * 获取所有群组参与者（不包含本地用户）
+     */
+    fun getAllGroupParticipants(): StateFlow<List<Participant>> =
+        groupManager.getAllGroupParticipants()
+    
+    /**
+     * 根据ID获取参与者
+     */
+    fun getParticipantById(participantId: String): Participant? =
+        groupManager.getParticipantById(participantId)
+    
+    /**
+     * 检查参与者的摄像头是否开启
+     */
+    fun isParticipantCameraEnabled(participantId: String): Boolean =
+        groupManager.isParticipantCameraEnabled(participantId)
+    
+    /**
+     * 检查参与者的麦克风是否开启
+     */
+    fun isParticipantMicrophoneEnabled(participantId: String): Boolean =
+        groupManager.isParticipantMicrophoneEnabled(participantId)
+    
+    /**
+     * 获取参与者的连接质量
+     */
+    fun getParticipantConnectionQuality(participantId: String): StateFlow<ConnectionQuality>? =
+        groupManager.getParticipantConnectionQuality(participantId)
+    
+    // ===== 扬声器管理接口 =====
+    
+    /**
+     * 获取活跃扬声器Flow
+     */
+    fun getActiveSpeakersFlow(): StateFlow<List<Participant>> =
+        speakerManager.getActiveSpeakersFlow()
+    
+    // ===== 协程管理接口 =====
+    
+    /**
+     * 构建协程作用域
+     */
+    fun buildScope(): CoroutineScope = scopeManager.buildScope()
+    
+    /**
+     * 取消协程作用域
+     */
+    fun scopeCancel(scope: CoroutineScope) = scopeManager.scopeCancel(scope)
+    
+    /**
+     * 订阅Flow
+     */
+    @JvmOverloads
+    fun <T> subscribe(
+        flow: Flow<T>, 
+        function: (T) -> Any,
+        scope: CoroutineScope = viewModelScope,
+    ) = scopeManager.subscribe(flow, function, scope)
+    
+    // ===== 其他功能接口 =====
+    
+    /**
+     * 获取连接质量Flow
+     */
+    fun getConnectionFlow(p: Participant): StateFlow<ConnectionQuality> {
+        return p::connectionQuality.flow
     }
-
-
-    fun getVideoTrack(participant: Participant): VideoTrack? {
-        return participant.getTrackPublication(Track.Source.CAMERA)?.track as? VideoTrack
-    }
-
-    fun startScreenCapture(mediaProjectionPermissionResultData: Intent) {
-        val localParticipant = room.localParticipant
+    
+    /**
+     * 发送数据
+     */
+    fun sendData(message: String) {
         viewModelScope.launch {
-            val screencastTrack = localParticipant.createScreencastTrack(mediaProjectionPermissionResultData = mediaProjectionPermissionResultData)
-            localParticipant.publishVideoTrack(
-                screencastTrack
-            )
-
-            // Must start the foreground prior to startCapture.
-            screencastTrack.startForegroundService(null, null)
-            screencastTrack.startCapture()
-
-            this@CallViewModel.localScreencastTrack = screencastTrack
-            mutableScreencastEnabled.postValue(screencastTrack.enabled)
+            roomManager.room.localParticipant.publishData(message.toByteArray(Charsets.UTF_8))
         }
     }
-
-
-    fun stopScreenCapture() {
-        viewModelScope.launch {
-            localScreencastTrack?.let { localScreencastVideoTrack ->
-                localScreencastVideoTrack.stop()
-                room.localParticipant.unpublishTrack(localScreencastVideoTrack)
-                mutableScreencastEnabled.postValue(localScreencastTrack?.enabled ?: false)
-            }
+    
+    /**
+     * 切换订阅权限
+     */
+    fun toggleSubscriptionPermissions() {
+        mutablePermissionAllowed.value = !mutablePermissionAllowed.value
+        roomManager.room.localParticipant.setTrackSubscriptionPermissions(mutablePermissionAllowed.value)
+    }
+    
+    /**
+     * 模拟迁移
+     */
+    fun simulateMigration() {
+        roomManager.room.sendSimulateScenario(
+            livekit.LivekitRtc.SimulateScenario.newBuilder().setMigration(true).build()
+        )
+    }
+    
+    /**
+     * 清除错误
+     */
+    fun dismissError() = roomManager.clearError()
+    
+    // ===== 生命周期管理 =====
+    
+    /**
+     * 释放资源
+     */
+    fun release() {
+        try {
+            Timber.d { "[CallViewModel] 开始释放资源" }
+            
+            deviceManager.release()
+            groupManager.release()  
+            videoManager.release()
+            speakerManager.release()
+            multiStreamManager.release()  // Week 2 Day 6
+            streamMonitor.release()       // Week 2 Day 6
+            scopeManager.release()
+            roomManager.disconnect()
+            
+            Timber.d { "[CallViewModel] 资源释放完成" }
+            
+        } catch (e: Exception) {
+            Timber.e(e) { "[CallViewModel] 释放资源异常" }
         }
     }
-
+    
+    /**
+     * ViewModel销毁时自动释放资源
+     */
     override fun onCleared() {
         super.onCleared()
         release()
     }
-
-    fun release() {
-        try {
-            scopes.forEach { it.cancel() }
-            scopes.clear()
-            room.disconnect()
-            room.release()
-        } catch (_: Exception) {
-        }
-    }
-
-    fun setMicEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            room.localParticipant.setMicrophoneEnabled(enabled)
-            mutableMicEnabled.postValue(enabled)
-        }
-    }
-
-    fun setCameraEnabled(enabled: Boolean) {
-        viewModelScope.launch {
-            room.localParticipant.setCameraEnabled(enabled)
-            mutableCameraEnabled.postValue(enabled)
-        }
-    }
-
-    fun flipCamera() {
-        val videoTrack = room.localParticipant.getTrackPublication(Track.Source.CAMERA)?.track as? LocalVideoTrack ?: return
-
-        val newPosition = when (videoTrack.options.position) {
-            CameraPosition.FRONT -> CameraPosition.BACK
-            CameraPosition.BACK -> CameraPosition.FRONT
-            else -> null
-        }
-
-        try {
-            videoTrack.switchCamera(position = newPosition)
-        } catch (e: Exception) {
-            e.printStackTrace()
-        }
-    }
-
-    fun getActiveSpeakersFlow(): StateFlow<List<Participant>> {
-        return room::activeSpeakers.flow
-    }
-
-    fun dismissError() {
-        mutableError.value = null
-    }
-
-
-    fun buildScope(): CoroutineScope {
-        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main);
-        scopes.add(scope)
-        return scope;
-    }
-
-    fun scopeCancel(scope: CoroutineScope) {
-        scope.cancel()
-        scopes.remove(scope)
-    }
-
-    @JvmOverloads
-    fun <T> subscribe(
-        flow: Flow<T>, function: (T) -> Any,
-        scope: CoroutineScope = viewModelScope,
-    ) {
-        scopes.add(scope)
-        scope.launch {
-            flow.collect {
-                function.invoke(it)
-            }
-        }
-    }
-
-
-    fun getConnectionFlow(p: Participant): StateFlow<ConnectionQuality> {
-        return p::connectionQuality.flow
-    }
-
-    fun sendData(message: String) {
-        viewModelScope.launch {
-            room.localParticipant.publishData(message.toByteArray(Charsets.UTF_8))
-        }
-    }
-
-    fun toggleSubscriptionPermissions() {
-        mutablePermissionAllowed.value = !mutablePermissionAllowed.value
-        room.localParticipant.setTrackSubscriptionPermissions(mutablePermissionAllowed.value)
-    }
-
-    fun simulateMigration() {
-        room.sendSimulateScenario(
-            LivekitRtc.SimulateScenario.newBuilder().setMigration(true).build()
-        )
-    }
-
-    fun reconnect() {
-        mutablePrimarySpeaker.value = null
-        room.disconnect()
-        viewModelScope.launch {
-            connectToRoom(url, token)
-        }
-    }
-
-
 }
 
+// ===== 扩展函数 =====
 public fun <T> LiveData<T>.hide(): LiveData<T> = this
 public fun <T> MutableStateFlow<T>.hide(): StateFlow<T> = this
 public fun <T> Flow<T>.hide(): Flow<T> = this
- fun Participant.getIdentity(): String {
+
+fun Participant.getIdentity(): String {
     if (null != this.identity)
         return this.identity!!.value
     return ""
 }
-

@@ -132,11 +132,25 @@ public class Constants {
     public static class MsgType {
         //本地呼叫记录
         public static final int LOCAL_CALL_HISTORY = -110;
+        
+        // 1v1通话信令 (200-204)
         public static final int callingInvite = 200;
         public static final int callingAccept = 201;
         public static final int callingReject = 202;
         public static final int callingCancel = 203;
         public static final int callingHungup = 204;
+        
+        // 群组通话信令 (210-219)
+        public static final int multiPartyInvite = 210;      // 群组呼叫邀请
+        public static final int multiPartyAccept = 211;      // 接受群组呼叫
+        public static final int multiPartyReject = 212;      // 拒绝群组呼叫
+        public static final int multiPartyCancel = 213;      // 取消群组呼叫
+        public static final int multiPartyHangup = 214;      // 挂断群组呼叫
+        public static final int multiPartyMemberJoin = 215;  // 成员加入通话
+        public static final int multiPartyMemberLeave = 216; // 成员离开通话
+        public static final int multiPartyMemberStateChange = 217; // 成员状态变更
+        public static final int multiPartySpeakingState = 218; // 发言状态变更
+        public static final int multiPartyQualityReport = 219; // 网络质量报告
     }
 
     public static class MediaType {

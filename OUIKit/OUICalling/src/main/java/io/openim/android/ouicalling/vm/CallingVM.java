@@ -14,11 +14,21 @@ import androidx.lifecycle.MutableLiveData;
 
 import com.twilio.audioswitch.AudioDevice;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Timer;
 import java.util.TimerTask;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.CopyOnWriteArrayList;
+
+// 群组通话相关导入
+import io.openim.android.ouicalling.entity.CallMemberState;
+import io.openim.android.ouicalling.entity.GroupCallMember;
+import io.openim.android.ouicalling.entity.MultiPartySignaling;
+import io.openim.android.ouicalling.utils.SignalingDeduplicator;
+import io.openim.android.ouicalling.utils.VideoResourcePool;
 
 import io.livekit.android.renderer.TextureViewRenderer;
 import io.livekit.android.room.participant.Participant;
@@ -77,6 +87,33 @@ public class CallingVM {
     public boolean isCallOut;
     //是否是群
     public boolean isGroup;
+    
+    // === 群组通话扩展字段 ===
+    // 是否群组通话
+    public boolean isGroupCall = false;
+    // 群组通话成员列表（线程安全）
+    public final CopyOnWriteArrayList<GroupCallMember> groupMembers = new CopyOnWriteArrayList<>();
+    // 当前发言人ID（v1.2实现）
+    public String currentSpeaker = "";
+    // 房间ID（群组通话用）
+    private String groupRoomId = "";
+    // 群组ID
+    private String groupId = "";
+    
+    // === 业界最佳实践组件 ===
+    // 信令去重组件
+    private final SignalingDeduplicator deduplicator = new SignalingDeduplicator();
+    // 视频资源池
+    private final VideoResourcePool resourcePool = new VideoResourcePool();
+    
+    /**
+     * 获取视频资源池
+     */
+    public VideoResourcePool getResourcePool() {
+        return resourcePool;
+    }
+    // 群组信令监听器
+    private OnGroupSignalingListener groupSignalingListener;
 
     private List<TextureViewRenderer> remoteSpeakerVideoViews, localSpeakerVideoViews;
 
@@ -341,6 +378,8 @@ public class CallingVM {
     public void unBindView() {
         try {
             cancelTimer();
+            
+            // 原有1v1通话资源清理
             if (null != localVideoTrack) {
                 if (null != localSpeakerVideoViews) {
                     for (TextureViewRenderer localSpeakerVideoView : localSpeakerVideoViews) {
@@ -356,10 +395,14 @@ public class CallingVM {
                     ((VideoTrack) videoTask).removeRenderer(textureViewRenderer);
                 }
             }
+            
+            // 群组通话资源清理
+            cleanupGroupCall();
+            
             callViewModel.onCleared();
-            L.e("unBindView");
+            L.e("unBindView - 包含群组通话清理");
         } catch (Exception e) {
-            e.printStackTrace();
+            L.e("CallingVM", "unBindView清理失败", e);
         }
     }
 
@@ -424,6 +467,328 @@ public class CallingVM {
      */
     public void changeToHeadset() {
         callViewModel.getAudioHandler().selectDevice(new AudioDevice.BluetoothHeadset());
+    }
+
+    // ===== 群组通话扩展方法 =====
+
+    /**
+     * 发起群组通话
+     * @param groupId 群组ID
+     * @param memberIds 成员ID列表
+     * @param isVideo 是否视频通话
+     */
+    public void initiateGroupCall(String groupId, List<String> memberIds, boolean isVideo) {
+        try {
+            L.d("CallingVM", "发起群组通话 - 群组: " + groupId + ", 成员数: " + memberIds.size() + ", 视频: " + isVideo);
+            
+            // 1. 设置群组通话模式
+            this.isGroupCall = true;
+            this.isVideoCalls = isVideo;
+            this.groupId = groupId;
+            this.groupRoomId = "group_call_" + System.currentTimeMillis();
+            
+            // 2. 初始化成员列表
+            groupMembers.clear();
+            for (String memberId : memberIds) {
+                if (!memberId.equals(BaseApp.inst().loginCertificate.userID)) {
+                    GroupCallMember member = new GroupCallMember(memberId);
+                    member.setState(CallMemberState.INVITING);
+                    groupMembers.add(member);
+                    L.v("CallingVM", "添加群组成员: " + memberId);
+                }
+            }
+            
+            // 3. 创建群组信令并发送邀请
+            MultiPartySignaling signaling = createGroupInviteSignaling(memberIds, isVideo);
+            sendGroupSignaling(Constants.MsgType.multiPartyInvite, signaling);
+            
+            // 4. 获取房间Token并准备连接
+            prepareGroupRoom(signaling);
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "发起群组通话失败", e);
+            handleGroupCallError("发起群组通话失败", e);
+        }
+    }
+
+    /**
+     * 处理群组信令（带去重）
+     */
+    public void handleGroupSignaling(MultiPartySignaling signaling) {
+        if (signaling == null) {
+            L.w("CallingVM", "群组信令为空");
+            return;
+        }
+
+        // 使用去重组件处理
+        deduplicator.handleSignalingWithDeduplication(signaling, this::processGroupSignaling);
+    }
+
+    /**
+     * 实际处理群组信令的逻辑
+     */
+    private void processGroupSignaling(MultiPartySignaling signaling) throws Exception {
+        String type = signaling.getType();
+        L.d("CallingVM", "处理群组信令: " + type);
+
+        switch (type) {
+            case "multiPartyInvite":
+                handleGroupInvite(signaling);
+                break;
+            case "multiPartyAccept":
+                handleGroupAccept(signaling);
+                break;
+            case "multiPartyReject":
+                handleGroupReject(signaling);
+                break;
+            case "multiPartyCancel":
+                handleGroupCancel(signaling);
+                break;
+            case "multiPartyHangup":
+                handleGroupHangup(signaling);
+                break;
+            case "multiPartyMemberJoin":
+                handleMemberJoin(signaling);
+                break;
+            case "multiPartyMemberLeave":
+                handleMemberLeave(signaling);
+                break;
+            case "multiPartyMemberStateChange":
+                handleMemberStateChange(signaling);
+                break;
+            default:
+                L.w("CallingVM", "未知的群组信令类型: " + type);
+        }
+    }
+
+    /**
+     * 更新成员状态
+     */
+    public void updateMemberState(String userId, CallMemberState newState) {
+        GroupCallMember member = findMember(userId);
+        if (member != null) {
+            boolean success = member.setState(newState);
+            if (success) {
+                L.d("CallingVM", "成员状态更新: " + userId + " -> " + newState.getDescription());
+                notifyGroupSignalingListener();
+            } else {
+                L.w("CallingVM", "成员状态更新失败: " + userId + " -> " + newState.getDescription());
+            }
+        } else {
+            L.w("CallingVM", "未找到成员: " + userId);
+        }
+    }
+
+    /**
+     * 获取渲染器（使用资源池）
+     */
+    public TextureViewRenderer getRendererForMember(String userId) {
+        return resourcePool.acquireRenderer(userId, this);
+    }
+
+    /**
+     * 释放成员渲染器
+     */
+    public void releaseMemberRenderer(String userId) {
+        resourcePool.releaseRenderer(userId);
+    }
+
+    /**
+     * 查找群组成员
+     */
+    private GroupCallMember findMember(String userId) {
+        for (GroupCallMember member : groupMembers) {
+            if (member.getUserId().equals(userId)) {
+                return member;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 创建群组邀请信令
+     */
+    private MultiPartySignaling createGroupInviteSignaling(List<String> memberIds, boolean isVideo) {
+        MultiPartySignaling signaling = new MultiPartySignaling();
+        signaling.setType("multiPartyInvite");
+        signaling.setRoomID(groupRoomId);
+        signaling.setInviterID(BaseApp.inst().loginCertificate.userID);
+        signaling.setInviteeList(new ArrayList<>(memberIds));
+        signaling.setVideoCall(isVideo);
+        return signaling;
+    }
+
+    /**
+     * 发送群组信令
+     */
+    private void sendGroupSignaling(int msgType, MultiPartySignaling signaling) {
+        try {
+            HashMap<String, Object> hashMap = new HashMap<>();
+            hashMap.put(Constants.K_CUSTOM_TYPE, msgType);
+            hashMap.put(Constants.K_DATA, signaling);
+            
+            Message message = OpenIMClient.getInstance().messageManager.createCustomMessage(
+                GsonHel.toJson(hashMap), "", ""
+            );
+
+            // 群组信令发送到群聊
+            if (message != null && groupId != null && !groupId.isEmpty()) {
+                OpenIMClient.getInstance().messageManager.sendMessage(
+                    new OnMsgSendCallback() {
+                        @Override
+                        public void onError(int code, String error) {
+                            L.e("CallingVM", "群组信令发送失败: " + error + "-" + code);
+                            handleGroupCallError("信令发送失败", new Exception(error));
+                        }
+
+                        @Override
+                        public void onSuccess(Message data) {
+                            L.d("CallingVM", "群组信令发送成功: " + signaling.getType());
+                        }
+                    },
+                    message, 
+                    null,  // 接收用户ID (群组消息为null)
+                    groupId,  // 群组ID
+                    new OfflinePushInfo(), 
+                    false  // 不是在线消息
+                );
+            }
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "发送群组信令异常", e);
+            handleGroupCallError("信令发送异常", e);
+        }
+    }
+
+    // 群组信令处理方法（简化版，后续完善）
+    private void handleGroupInvite(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理群组邀请");
+        // TODO: 实现群组邀请处理逻辑
+    }
+
+    private void handleGroupAccept(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理群组接受");
+        updateMemberState(signaling.getMemberID(), CallMemberState.CONNECTED);
+    }
+
+    private void handleGroupReject(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理群组拒绝");
+        updateMemberState(signaling.getMemberID(), CallMemberState.REJECTED);
+    }
+
+    private void handleGroupCancel(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理群组取消");
+        // TODO: 实现群组取消处理逻辑
+    }
+
+    private void handleGroupHangup(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理群组挂断");
+        updateMemberState(signaling.getMemberID(), CallMemberState.DISCONNECTED);
+    }
+
+    private void handleMemberJoin(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理成员加入");
+        // TODO: 实现成员加入处理逻辑
+    }
+
+    private void handleMemberLeave(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理成员离开");
+        updateMemberState(signaling.getMemberID(), CallMemberState.DISCONNECTED);
+    }
+
+    private void handleMemberStateChange(MultiPartySignaling signaling) {
+        L.d("CallingVM", "处理成员状态变更");
+        CallMemberState newState = CallMemberState.fromValue(signaling.getMemberState());
+        updateMemberState(signaling.getMemberID(), newState);
+    }
+
+    /**
+     * 准备群组房间连接
+     */
+    private void prepareGroupRoom(MultiPartySignaling signaling) {
+        // TODO: 获取LiveKit房间token并连接
+        L.d("CallingVM", "准备群组房间连接: " + signaling.getRoomID());
+    }
+
+    /**
+     * 处理群组通话错误
+     */
+    private void handleGroupCallError(String message, Exception e) {
+        L.e("CallingVM", message, e);
+        // TODO: 实现错误处理和UI提示
+    }
+
+    /**
+     * 通知群组信令监听器
+     */
+    private void notifyGroupSignalingListener() {
+        if (groupSignalingListener != null) {
+            groupSignalingListener.onMemberStateChanged(new ArrayList<>(groupMembers));
+        }
+    }
+
+    /**
+     * 清理群组通话资源
+     */
+    public void cleanupGroupCall() {
+        try {
+            L.d("CallingVM", "清理群组通话资源");
+            
+            // 清理信令去重器
+            deduplicator.clearAll();
+            
+            // 清理视频资源池
+            resourcePool.cleanup();
+            
+            // 重置群组状态
+            isGroupCall = false;
+            groupMembers.clear();
+            currentSpeaker = "";
+            groupRoomId = "";
+            groupId = "";
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "清理群组通话资源失败", e);
+        }
+    }
+
+    /**
+     * 重写finalize方法以支持群组通话资源清理
+     */
+    protected void finalize() throws Throwable {
+        try {
+            cleanupGroupCall();
+        } finally {
+            super.finalize();
+        }
+    }
+
+    // === 群组信令监听器接口 ===
+    public interface OnGroupSignalingListener {
+        void onMemberStateChanged(List<GroupCallMember> members);
+        void onCallEnded(String reason);
+        void onError(String error);
+    }
+
+    public void setGroupSignalingListener(OnGroupSignalingListener listener) {
+        this.groupSignalingListener = listener;
+    }
+
+    // === Getters for group call ===
+    public boolean isGroupCall() {
+        return isGroupCall;
+    }
+
+    public List<GroupCallMember> getGroupMembers() {
+        return new ArrayList<>(groupMembers);
+    }
+
+    public String getGroupRoomId() {
+        return groupRoomId;
+    }
+
+    public VideoResourcePool getResourcePool() {
+        return resourcePool;
     }
 
 }
