@@ -82,24 +82,28 @@ class GroupCallManager(
     private fun startGroupParticipantMonitoring() {
         roomEventJob?.cancel()
         roomEventJob = coroutineScope.launch {
-            room.events.collect { event ->
-                when (event) {
-                    is RoomEvent.ParticipantConnected -> {
-                        handleParticipantConnected(event.participant)
-                    }
-                    is RoomEvent.ParticipantDisconnected -> {
-                        handleParticipantDisconnected(event.participant)
-                    }
-                    is RoomEvent.TrackSubscribed -> {
-                        handleTrackSubscribed(event)
-                    }
-                    is RoomEvent.TrackUnsubscribed -> {
-                        handleTrackUnsubscribed(event)
-                    }
-                    else -> {
-                        Timber.v { "[GroupCallManager] Room event: $event" }
+            try {
+                room.events.collect { event ->
+                    when (event) {
+                        is RoomEvent.ParticipantConnected -> {
+                            handleParticipantConnected(event.participant)
+                        }
+                        is RoomEvent.ParticipantDisconnected -> {
+                            handleParticipantDisconnected(event.participant)
+                        }
+                        is RoomEvent.TrackSubscribed -> {
+                            handleTrackSubscribed(event)
+                        }
+                        is RoomEvent.TrackUnsubscribed -> {
+                            handleTrackUnsubscribed(event)
+                        }
+                        else -> {
+                            Timber.v { "[GroupCallManager] Room event: $event" }
+                        }
                     }
                 }
+            } catch (e: Exception) {
+                Timber.e(e) { "[GroupCallManager] Room event collection error" }
             }
         }
     }
@@ -151,11 +155,12 @@ class GroupCallManager(
         val participant = event.participant as? RemoteParticipant ?: return
         val identity = participant.identity?.value ?: return
         
-        Timber.d { "[GroupCallManager] 成员轨道订阅: $identity, track: ${event.publication.track?.kind}" }
+        val trackPublication = event.trackPublication
+        Timber.d { "[GroupCallManager] 成员轨道订阅: $identity, track: ${trackPublication.track?.kind}" }
         
         // 通知轨道变更
         _groupParticipantChanges.emit(
-            GroupParticipantChange.TrackSubscribed(identity, participant, event.publication)
+            GroupParticipantChange.TrackSubscribed(identity, participant, trackPublication)
         )
     }
     
@@ -166,11 +171,12 @@ class GroupCallManager(
         val participant = event.participant as? RemoteParticipant ?: return
         val identity = participant.identity?.value ?: return
         
-        Timber.d { "[GroupCallManager] 成员轨道取消订阅: $identity, track: ${event.publication.track?.kind}" }
+        val trackPublication = event.trackPublication
+        Timber.d { "[GroupCallManager] 成员轨道取消订阅: $identity, track: ${trackPublication.track?.kind}" }
         
         // 通知轨道变更
         _groupParticipantChanges.emit(
-            GroupParticipantChange.TrackUnsubscribed(identity, participant, event.publication)
+            GroupParticipantChange.TrackUnsubscribed(identity, participant, trackPublication)
         )
     }
     
@@ -221,7 +227,12 @@ class GroupCallManager(
      */
     fun getParticipantConnectionQuality(participantId: String): StateFlow<io.livekit.android.room.participant.ConnectionQuality>? {
         val participant = getParticipantById(participantId) ?: return null
-        return participant.connectionQuality.flow
+        return try {
+            participant.connectionQuality.asStateFlow()
+        } catch (e: Exception) {
+            Timber.w(e) { "[GroupCallManager] Failed to get connection quality for $participantId" }
+            null
+        }
     }
     
     /**

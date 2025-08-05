@@ -114,7 +114,12 @@ class MultiStreamDemoActivity : AppCompatActivity() {
                 
                 // 根据说话者更新优先级
                 speakers.forEach { speaker ->
-                    val participantId = speaker.identity?.value ?: ""
+                    // 尝试不同的identity访问方式
+                    val participantId = try {
+                        speaker.identity?.value ?: ""
+                    } catch (e: Exception) {
+                        speaker.identity?.toString() ?: ""
+                    }
                     if (participantId.isNotEmpty()) {
                         callViewModel.updateStreamPriority(participantId, StreamPriority.HIGH)
                     }

@@ -51,16 +51,24 @@ class VideoBindingManager(
                 }
             
             scope.launch {
-                videoTrackPubFlow.flatMapLatest { pub ->
-                    if (pub != null) {
-                        pub.track.flow
-                    } else {
-                        flowOf(null)
+                try {
+                    videoTrackPubFlow.flatMapLatest { pub ->
+                        if (pub != null) {
+                            try {
+                                pub.track.asFlow()
+                            } catch (e: Exception) {
+                                flowOf(null)
+                            }
+                        } else {
+                            flowOf(null)
+                        }
+                    }.collect { videoTrack ->
+                        if (videoTrack is VideoTrack) {
+                            bindVideoTrack(viewRenderer, videoTrack)
+                        }
                     }
-                }.collect { videoTrack ->
-                    if (videoTrack is VideoTrack) {
-                        bindVideoTrack(viewRenderer, videoTrack)
-                    }
+                } catch (e: Exception) {
+                    Timber.e(e) { "[VideoBindingManager] Video track Flow collection error" }
                 }
             }
             

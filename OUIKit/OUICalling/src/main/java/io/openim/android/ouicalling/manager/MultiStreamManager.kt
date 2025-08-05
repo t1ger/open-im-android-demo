@@ -335,29 +335,33 @@ class MultiStreamManager(
      */
     private fun startSpeakerDetection() {
         coroutineScope.launch {
-            // 监听LiveKit的activeSpeakers事件
-            room.activeSpeakers.flow.collect { speakers ->
-                val speakerIds = speakers.mapNotNull { it.identity?.value }.toSet()
-                _activeSpeakers.value = speakerIds
-                
-                // 更新主要说话者（选择第一个远程说话者）
-                val primarySpeaker = speakers
-                    .filterIsInstance<RemoteParticipant>()
-                    .firstOrNull()?.identity?.value
-                
-                if (primarySpeaker != _primarySpeaker.value) {
-                    _primarySpeaker.value = primarySpeaker
+            try {
+                // 监听LiveKit的activeSpeakers事件
+                room.activeSpeakers.asFlow().collect { speakers ->
+                    val speakerIds = speakers.mapNotNull { it.identity?.value }.toSet()
+                    _activeSpeakers.value = speakerIds
                     
-                    // 主要说话者变化时，提升其优先级
-                    if (primarySpeaker != null) {
-                        updateStreamPriority(primarySpeaker, StreamPriority.HIGH)
+                    // 更新主要说话者（选择第一个远程说话者）
+                    val primarySpeaker = speakers
+                        .filterIsInstance<RemoteParticipant>()
+                        .firstOrNull()?.identity?.value
+                    
+                    if (primarySpeaker != _primarySpeaker.value) {
+                        _primarySpeaker.value = primarySpeaker
+                        
+                        // 主要说话者变化时，提升其优先级
+                        if (primarySpeaker != null) {
+                            updateStreamPriority(primarySpeaker, StreamPriority.HIGH)
+                        }
+                        
+                        Timber.d { "[MultiStreamManager] 主要说话者变更: $primarySpeaker" }
                     }
                     
-                    Timber.d { "[MultiStreamManager] 主要说话者变更: $primarySpeaker" }
+                    // 触发优先级重新调度
+                    scheduleStreamPriorities()
                 }
-                
-                // 触发优先级重新调度
-                scheduleStreamPriorities()
+            } catch (e: Exception) {
+                Timber.e(e) { "[MultiStreamManager] Speaker detection error" }
             }
         }
     }

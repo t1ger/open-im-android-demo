@@ -130,20 +130,24 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
 
             // 处理房间事件
             launch {
-                roomManager.room.events.collect { event ->
-                    when (event) {
-                        is io.livekit.android.events.RoomEvent.FailedToConnect -> {
-                            // 错误已由roomManager处理
-                        }
-                        is io.livekit.android.events.RoomEvent.DataReceived -> {
-                            val identity = event.participant?.identity ?: "server"
-                            val message = event.data.toString(Charsets.UTF_8)
-                            mutableDataReceived.emit("$identity: $message")
-                        }
-                        else -> {
-                            Timber.v { "[CallViewModel] Room event: $event" }
+                try {
+                    roomManager.room.events.collect { event ->
+                        when (event) {
+                            is io.livekit.android.events.RoomEvent.FailedToConnect -> {
+                                // 错误已由roomManager处理
+                            }
+                            is io.livekit.android.events.RoomEvent.DataReceived -> {
+                                val identity = event.participant?.identity ?: "server"
+                                val message = event.data.toString(Charsets.UTF_8)
+                                mutableDataReceived.emit("$identity: $message")
+                            }
+                            else -> {
+                                Timber.v { "[CallViewModel] Room event: $event" }
+                            }
                         }
                     }
+                } catch (e: Exception) {
+                    Timber.e(e) { "[CallViewModel] Room event collection error" }
                 }
             }
         }
