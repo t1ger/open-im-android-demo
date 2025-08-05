@@ -78,12 +78,14 @@ class MultiStreamDemoActivity : AppCompatActivity() {
     }
     
     private fun initViews() {
-        // 假设layout中有RecyclerView
-        recyclerView = findViewById(R.id.recyclerView) ?: RecyclerView(this).apply {
-            layoutParams = RecyclerView.LayoutParams(
-                RecyclerView.LayoutParams.MATCH_PARENT,
-                RecyclerView.LayoutParams.MATCH_PARENT
+        // 创建RecyclerView（如果layout中没有的话）
+        recyclerView = findViewById<RecyclerView?>(R.id.recyclerView) ?: RecyclerView(this).apply {
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT
             )
+            // 如果没有找到RecyclerView，设置为内容视图
+            setContentView(this)
         }
     }
     
@@ -112,7 +114,7 @@ class MultiStreamDemoActivity : AppCompatActivity() {
                 
                 // 根据说话者更新优先级
                 speakers.forEach { speaker ->
-                    val participantId = speaker.getIdentity()
+                    val participantId = speaker.identity?.value ?: ""
                     if (participantId.isNotEmpty()) {
                         callViewModel.updateStreamPriority(participantId, StreamPriority.HIGH)
                     }

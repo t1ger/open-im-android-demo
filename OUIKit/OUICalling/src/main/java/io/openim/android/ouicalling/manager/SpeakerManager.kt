@@ -19,10 +19,10 @@ class SpeakerManager(private val room: Room) {
     val primarySpeaker: StateFlow<Participant?> = _primarySpeaker.asStateFlow()
     
     // 活跃扬声器列表
-    val activeSpeakers: Flow<List<Participant>> = room::activeSpeakers.flow
+    val activeSpeakers: Flow<List<Participant>> = room.activeSpeakers.flow
     
     // 所有参与者（本地 + 远程）
-    val allParticipants: Flow<List<Participant>> = room::remoteParticipants.flow.map { remoteParticipants ->
+    val allParticipants: Flow<List<Participant>> = room.remoteParticipants.flow.map { remoteParticipants ->
         listOf<Participant>(room.localParticipant) + remoteParticipants.keys
             .sortedBy { it.value }
             .mapNotNull { remoteParticipants[it] }
@@ -50,7 +50,7 @@ class SpeakerManager(private val room: Room) {
                 
                 if (remoteSpeaker != null) {
                     speaker = remoteSpeaker
-                    Timber.d { "[SpeakerManager] 从本地切换到远程扬声器: ${speaker.identity?.value}" }
+                    Timber.d { "[SpeakerManager] 从本地切换到远程扬声器: ${remoteSpeaker.identity?.value}" }
                 }
             }
             
@@ -72,7 +72,7 @@ class SpeakerManager(private val room: Room) {
                 
                 if (remoteSpeaker != null) {
                     speaker = remoteSpeaker
-                    Timber.d { "[SpeakerManager] 切换到活跃远程扬声器: ${speaker.identity?.value}" }
+                    Timber.d { "[SpeakerManager] 切换到活跃远程扬声器: ${remoteSpeaker.identity?.value}" }
                 }
             }
             

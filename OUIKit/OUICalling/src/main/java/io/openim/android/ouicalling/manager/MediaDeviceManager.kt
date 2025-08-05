@@ -42,8 +42,10 @@ class MediaDeviceManager(
             Timber.d { "[MediaDeviceManager] 设置麦克风状态: $enabled" }
             
             val localParticipant = room.localParticipant
-            localParticipant.setMicrophoneEnabled(enabled)
-            _micEnabled.postValue(localParticipant.isMicrophoneEnabled())
+            coroutineScope.launch {
+                localParticipant.setMicrophoneEnabled(enabled)
+                _micEnabled.postValue(localParticipant.isMicrophoneEnabled())
+            }
             
         } catch (e: Exception) {
             Timber.e(e) { "[MediaDeviceManager] 设置麦克风状态失败" }
@@ -58,8 +60,10 @@ class MediaDeviceManager(
             Timber.d { "[MediaDeviceManager] 设置摄像头状态: $enabled" }
             
             val localParticipant = room.localParticipant
-            localParticipant.setCameraEnabled(enabled)
-            _cameraEnabled.postValue(localParticipant.isCameraEnabled())
+            coroutineScope.launch {
+                localParticipant.setCameraEnabled(enabled)
+                _cameraEnabled.postValue(localParticipant.isCameraEnabled())
+            }
             
         } catch (e: Exception) {
             Timber.e(e) { "[MediaDeviceManager] 设置摄像头状态失败" }

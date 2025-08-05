@@ -97,9 +97,14 @@ class SmartVideoStreamAdapter(
     ) : RecyclerView.ViewHolder(itemView) {
         
         // 需要根据实际布局文件获取TextureViewRenderer
-        val renderer: TextureViewRenderer = itemView.findViewById(
-            io.openim.android.ouicalling.R.id.renderer  // 需要确认实际的ID
-        )
+        val renderer: TextureViewRenderer by lazy {
+            itemView as? TextureViewRenderer ?: TextureViewRenderer(itemView.context).apply {
+                // 如果itemView不是TextureViewRenderer，创建一个新的并添加到布局中
+                if (itemView is android.view.ViewGroup) {
+                    itemView.addView(this)
+                }
+            }
+        }
         
         var currentItem: VideoStreamItem? = null
         private var bindingJob: Job? = null

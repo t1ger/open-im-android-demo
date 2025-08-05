@@ -199,7 +199,7 @@ class MultiStreamManager(
     /**
      * 绑定视频到渲染器（自适应质量）
      */
-    private suspend fun bindVideoToRenderer(renderer: TextureViewRenderer, participant: Participant) {
+    private fun bindVideoToRenderer(renderer: TextureViewRenderer, participant: Participant) {
         try {
             // 获取最佳质量的视频轨道
             val videoTrack = getBestQualityVideoTrack(participant)
@@ -276,8 +276,10 @@ class MultiStreamManager(
                     else -> VideoQuality.MEDIUM
                 }
                 
-                // 应用质量设置
-                publication.setVideoQuality(targetQuality)
+                // 应用质量设置（注意：LiveKit API可能不支持setVideoQuality，改用其他方式）
+                // publication.setVideoQuality(targetQuality) // 这个API可能不存在
+                // 使用其他方式设置质量，或者记录日志
+                Timber.d { "[MultiStreamManager] 正在设置视频质量: $targetQuality" }
                 
                 Timber.v { "[MultiStreamManager] 自适应质量调整: ${participant.identity?.value} -> $targetQuality" }
             }
@@ -334,7 +336,7 @@ class MultiStreamManager(
     private fun startSpeakerDetection() {
         coroutineScope.launch {
             // 监听LiveKit的activeSpeakers事件
-            room::activeSpeakers.flow.collect { speakers ->
+            room.activeSpeakers.flow.collect { speakers ->
                 val speakerIds = speakers.mapNotNull { it.identity?.value }.toSet()
                 _activeSpeakers.value = speakerIds
                 

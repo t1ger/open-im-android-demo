@@ -221,7 +221,7 @@ class GroupCallManager(
      */
     fun getParticipantConnectionQuality(participantId: String): StateFlow<io.livekit.android.room.participant.ConnectionQuality>? {
         val participant = getParticipantById(participantId) ?: return null
-        return participant::connectionQuality.flow
+        return participant.connectionQuality.flow
     }
     
     /**

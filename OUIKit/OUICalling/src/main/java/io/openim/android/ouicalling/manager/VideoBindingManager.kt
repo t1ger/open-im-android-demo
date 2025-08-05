@@ -40,7 +40,7 @@ class VideoBindingManager(
             unbindVideoRenderer(viewRenderer)
             
             // 观察视频轨道变化
-            val videoTrackPubFlow = participant::videoTrackPublications.flow
+            val videoTrackPubFlow = participant.videoTrackPublications.flow
                 .map { participant to it }
                 .flatMapLatest { (participant, videoTracks) ->
                     // 优先选择屏幕共享，其次是摄像头
@@ -53,7 +53,7 @@ class VideoBindingManager(
             scope.launch {
                 videoTrackPubFlow.flatMapLatest { pub ->
                     if (pub != null) {
-                        pub::track.flow
+                        pub.track.flow
                     } else {
                         flowOf(null)
                     }

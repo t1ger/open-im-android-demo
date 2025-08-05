@@ -59,7 +59,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     
     // ===== 参与者相关 =====
     val allParticipants = speakerManager.allParticipants
-    val remoteParticipants = roomManager.room::remoteParticipants.flow
+    val remoteParticipants = roomManager.room.remoteParticipants.flow
     var singleRemotePar: RemoteParticipant? = null
     
     // ===== 状态管理 =====
@@ -92,7 +92,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     val performanceReport = streamMonitor.performanceReport
     
     // 房间元数据
-    val roomMetadata = roomManager.room::metadata.flow
+    val roomMetadata = roomManager.room.metadata.flow
     
     // 数据接收
     private val mutableDataReceived = MutableSharedFlow<String>()
@@ -394,7 +394,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      * 获取连接质量Flow
      */
     fun getConnectionFlow(p: Participant): StateFlow<ConnectionQuality> {
-        return p::connectionQuality.flow
+        return p.connectionQuality.flow
     }
     
     /**
