@@ -207,7 +207,9 @@ class MultiStreamManager(
             if (videoTrack != null) {
                 // 应用自适应质量设置
                 if (_adaptiveQualityEnabled.value) {
-                    applyAdaptiveQuality(videoTrack, participant)
+                    coroutineScope.launch {
+                        applyAdaptiveQuality(videoTrack, participant)
+                    }
                 }
                 
                 // 绑定到渲染器
@@ -337,7 +339,7 @@ class MultiStreamManager(
         coroutineScope.launch {
             try {
                 // 监听LiveKit的activeSpeakers事件
-                room.activeSpeakers.asFlow().collect { speakers ->
+                room.activeSpeakers.asFlow().collect { speakers: List<Participant> ->
                     val speakerIds = speakers.mapNotNull { it.identity?.value }.toSet()
                     _activeSpeakers.value = speakerIds
                     

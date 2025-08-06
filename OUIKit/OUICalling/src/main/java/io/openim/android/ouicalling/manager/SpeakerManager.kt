@@ -22,7 +22,7 @@ class SpeakerManager(private val room: Room) {
     val activeSpeakers: Flow<List<Participant>> = try {
         room.activeSpeakers.asFlow()
     } catch (e: Exception) {
-        flowOf(emptyList())
+        flowOf<List<Participant>>(emptyList())
     }
     
     // 所有参与者（本地 + 远程）
@@ -33,7 +33,7 @@ class SpeakerManager(private val room: Room) {
                 .mapNotNull { remoteParticipants[it] }
         }
     } catch (e: Exception) {
-        flowOf(listOf(room.localParticipant))
+        flowOf<List<Participant>>(listOf(room.localParticipant))
     }
     
     /**

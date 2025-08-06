@@ -115,6 +115,7 @@ public class CallingVM {
     // 群组信令监听器
     private OnGroupSignalingListener groupSignalingListener;
 
+
     private List<TextureViewRenderer> remoteSpeakerVideoViews, localSpeakerVideoViews;
 
 
@@ -230,6 +231,8 @@ public class CallingVM {
             }
         });
     }
+    
+
 
     /**
      * 连接房间
@@ -706,8 +709,139 @@ public class CallingVM {
      * 准备群组房间连接
      */
     private void prepareGroupRoom(MultiPartySignaling signaling) {
-        // TODO: 获取LiveKit房间token并连接
         L.d("CallingVM", "准备群组房间连接: " + signaling.getRoomID());
+        
+        // ✅ 通过原有的token获取流程，复用单人通话逻辑
+        Parameter parameter = new Parameter();
+        parameter.add("room", signaling.getRoomID());
+        parameter.add("identity", BaseApp.inst().loginCertificate.userID);
+        
+        N.API(OneselfService.class).getTokenForRTC(parameter.buildJsonBody())
+            .map(OneselfService.turn(HashMap.class))
+            .map((Function<HashMap, SignalingCertificate>) responseBody -> {
+                String serverUrl = (String) responseBody.get("serverUrl");
+                String token = (String) responseBody.get("token");
+                SignalingCertificate signalingCertificate = new SignalingCertificate();
+                signalingCertificate.setLiveURL(serverUrl);
+                signalingCertificate.setToken(token);
+                return signalingCertificate;
+            })
+            .compose(N.IOMain())
+            .subscribe(new NetObserver<SignalingCertificate>("") {
+                @Override
+                public void onSuccess(SignalingCertificate data) {
+                    if (data != null) {
+                        connectToGroupRoomWithToken(data, signaling);
+                    }
+                }
+                
+                @Override
+                protected void onFailure(Throwable e) {
+                    L.e("CallingVM", "获取群组通话Token失败", e);
+                    handleGroupCallError("获取房间Token失败", new Exception(e));
+                }
+            });
+    }
+    
+    /**
+     * 使用Token连接群组房间
+     * ✅ 使用CallViewModel的群组接口，不直接操作LiveKit
+     */
+    private void connectToGroupRoomWithToken(SignalingCertificate certificate, MultiPartySignaling signaling) {
+        try {
+            // 获取所有成员ID（包括自己）
+            List<String> allMemberIds = new ArrayList<>(signaling.getParticipants());
+            if (!allMemberIds.contains(BaseApp.inst().loginCertificate.userID)) {
+                allMemberIds.add(BaseApp.inst().loginCertificate.userID);
+            }
+            
+            // ✅ 使用CallViewModel的群组连接接口
+            callViewModel.connectToGroupRoom(
+                certificate.getLiveURL(),
+                certificate.getToken(),
+                allMemberIds,
+                result -> {
+                    if (result.isSuccess()) {
+                        onGroupRoomConnected();
+                    } else {
+                        L.e("CallingVM", "群组房间连接失败: " + result.getException());
+                        handleGroupCallError("连接群组房间失败", new Exception(result.getException()));
+                    }
+                    return Unit.INSTANCE;
+                }
+            );
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "连接群组房间异常", e);
+            handleGroupCallError("连接群组房间异常", e);
+        }
+    }
+    
+    /**
+     * 群组房间连接成功回调
+     * ✅ 通过CallViewModel设置事件监听，不直接访问LiveKit
+     */
+    private void onGroupRoomConnected() {
+        L.d("CallingVM", "群组房间连接成功");
+        
+        setSpeakerphoneOn(true);
+        if (!isVideoCalls) callViewModel.setCameraEnabled(false);
+        
+        // ✅ 订阅群组参与者变化
+        callViewModel.subscribe(callViewModel.getAllGroupParticipants(), participants -> {
+            updateGroupMembersFromParticipants(participants);
+            return null;
+        }, scope);
+        
+        // 初始化本地视频
+        initializeLocalVideoForGroup();
+        
+        buildTimer();
+        
+        // 通知UI群组通话已开始
+        notifyGroupSignalingListener();
+    }
+    
+    /**
+     * 从LiveKit参与者更新群组成员状态
+     */
+    private void updateGroupMembersFromParticipants(List<Participant> participants) {
+        try {
+            for (GroupCallMember member : groupMembers) {
+                // 查找对应的LiveKit参与者
+                Participant liveKitParticipant = null;
+                for (Participant p : participants) {
+                    if (p.getIdentity().equals(member.getUserID())) {
+                        liveKitParticipant = p;
+                        break;
+                    }
+                }
+                
+                if (liveKitParticipant != null) {
+                    // ✅ 通过CallViewModel获取状态，不直接访问LiveKit
+                    member.setState(CallMemberState.CONNECTED);
+                    member.setMicrophoneOn(
+                        callViewModel.isParticipantMicrophoneEnabled(member.getUserID())
+                    );
+                    member.setCameraOn(
+                        callViewModel.isParticipantCameraEnabled(member.getUserID())
+                    );
+                } else {
+                    // 参与者可能还未连接
+                    if (member.getState() == CallMemberState.INVITING) {
+                        // 保持邀请状态
+                    } else {
+                        member.setState(CallMemberState.DISCONNECTED);
+                    }
+                }
+            }
+            
+            // 通知UI更新
+            notifyGroupSignalingListener();
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "更新群组成员状态异常", e);
+        }
     }
 
     /**

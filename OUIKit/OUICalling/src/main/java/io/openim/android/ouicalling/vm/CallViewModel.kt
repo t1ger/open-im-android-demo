@@ -131,7 +131,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             // 处理房间事件
             launch {
                 try {
-                    roomManager.room.events.collect { event ->
+                    roomManager.room.events.collect { event: io.livekit.android.events.RoomEvent ->
                         when (event) {
                             is io.livekit.android.events.RoomEvent.FailedToConnect -> {
                                 // 错误已由roomManager处理

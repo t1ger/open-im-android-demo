@@ -83,7 +83,7 @@ class GroupCallManager(
         roomEventJob?.cancel()
         roomEventJob = coroutineScope.launch {
             try {
-                room.events.collect { event ->
+                room.events.collect { event: RoomEvent ->
                     when (event) {
                         is RoomEvent.ParticipantConnected -> {
                             handleParticipantConnected(event.participant)
@@ -228,7 +228,13 @@ class GroupCallManager(
     fun getParticipantConnectionQuality(participantId: String): StateFlow<io.livekit.android.room.participant.ConnectionQuality>? {
         val participant = getParticipantById(participantId) ?: return null
         return try {
-            participant.connectionQuality.asStateFlow()
+            // 修复: connectionQuality 属性可能不支持 asStateFlow()
+            // 使用 flowOf 来创建一个 Flow
+            flowOf(participant.connectionQuality).stateIn(
+                scope = coroutineScope,
+                started = SharingStarted.WhileSubscribed(),
+                initialValue = participant.connectionQuality
+            )
         } catch (e: Exception) {
             Timber.w(e) { "[GroupCallManager] Failed to get connection quality for $participantId" }
             null

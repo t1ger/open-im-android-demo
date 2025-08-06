@@ -114,11 +114,12 @@ class MultiStreamDemoActivity : AppCompatActivity() {
                 
                 // 根据说话者更新优先级
                 speakers.forEach { speaker ->
-                    // 尝试不同的identity访问方式
+                    // 修复: 使用正确的identity访问方式
                     val participantId = try {
                         speaker.identity?.value ?: ""
                     } catch (e: Exception) {
-                        speaker.identity?.toString() ?: ""
+                        Timber.w(e) { "[MultiStreamDemo] Failed to get participant identity" }
+                        ""
                     }
                     if (participantId.isNotEmpty()) {
                         callViewModel.updateStreamPriority(participantId, StreamPriority.HIGH)
