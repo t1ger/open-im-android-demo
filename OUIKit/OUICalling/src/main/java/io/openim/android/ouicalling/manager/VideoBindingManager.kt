@@ -40,15 +40,19 @@ class VideoBindingManager(
             unbindVideoRenderer(viewRenderer)
             
             // 观察视频轨道变化
-            val videoTrackPubFlow = participant.videoTrackPublications.flow
-                .map { videoTracks -> participant to videoTracks }
-                .flatMapLatest { (participant, videoTracks) ->
-                    // 优先选择屏幕共享，其次是摄像头
-                    val trackPublication = participant.getTrackPublication(Track.Source.SCREEN_SHARE) 
-                        ?: participant.getTrackPublication(Track.Source.CAMERA)
-                        ?: videoTracks.firstOrNull()?.first
-                    flowOf<TrackPublication?>(trackPublication)
-                }
+            val videoTrackPubFlow = try {
+                participant.videoTrackPublications.flow
+                    .map { videoTracks -> participant to videoTracks }
+                    .flatMapLatest { (participant, videoTracks) ->
+                        // 优先选择屏幕共享，其次是摄像头
+                        val trackPublication = participant.getTrackPublication(Track.Source.SCREEN_SHARE) 
+                            ?: participant.getTrackPublication(Track.Source.CAMERA)
+                            ?: videoTracks.values.firstOrNull()
+                        flowOf<TrackPublication?>(trackPublication)
+                    }
+            } catch (e: Exception) {
+                flowOf<TrackPublication?>(null)
+            }
             
             scope.launch {
                 try {

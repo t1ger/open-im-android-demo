@@ -20,17 +20,15 @@ class SpeakerManager(private val room: Room) {
     
     // 活跃扬声器列表
     val activeSpeakers: Flow<List<Participant>> = try {
-        room.activeSpeakers.asFlow()
+        room.activeSpeakers
     } catch (e: Exception) {
         flowOf<List<Participant>>(emptyList())
     }
     
     // 所有参与者（本地 + 远程）
     val allParticipants: Flow<List<Participant>> = try {
-        room.remoteParticipants.asFlow().map { remoteParticipants ->
-            listOf<Participant>(room.localParticipant) + remoteParticipants.keys
-                .sortedBy { it.value }
-                .mapNotNull { remoteParticipants[it] }
+        room.remoteParticipants.flow.map { remoteParticipants ->
+            listOf<Participant>(room.localParticipant) + remoteParticipants.values
         }
     } catch (e: Exception) {
         flowOf<List<Participant>>(listOf(room.localParticipant))

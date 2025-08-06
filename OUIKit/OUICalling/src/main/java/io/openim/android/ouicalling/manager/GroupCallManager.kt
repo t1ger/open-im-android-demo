@@ -5,6 +5,7 @@ import io.livekit.android.room.Room
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.participant.RemoteParticipant
 import io.livekit.android.room.track.TrackPublication
+import io.livekit.android.util.flow
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import com.github.ajalt.timberkt.Timber
@@ -142,8 +143,8 @@ class GroupCallManager(
         
         // 查找对应的轨道
         val trackPublication = when (mediaType.lowercase()) {
-            "audio" -> participant.audioTracks.values.firstOrNull()
-            "video" -> participant.videoTracks.values.firstOrNull()
+            "audio" -> participant.audioTrackPublications.values.firstOrNull()
+            "video" -> participant.videoTrackPublications.values.firstOrNull()
             else -> null
         }
         
@@ -211,9 +212,8 @@ class GroupCallManager(
     fun getParticipantConnectionQuality(participantId: String): StateFlow<io.livekit.android.room.participant.ConnectionQuality>? {
         val participant = getParticipantById(participantId) ?: return null
         return try {
-            // 修复: connectionQuality 属性可能不支持 asStateFlow()
-            // 使用 flowOf 来创建一个 Flow
-            flowOf(participant.connectionQuality).stateIn(
+            // 使用LiveKit的flow扩展属性
+            participant.connectionQuality.flow.stateIn(
                 scope = coroutineScope,
                 started = SharingStarted.WhileSubscribed(),
                 initialValue = participant.connectionQuality

@@ -387,7 +387,16 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      * 获取连接质量Flow
      */
     fun getConnectionFlow(p: Participant): StateFlow<ConnectionQuality> {
-        return p.connectionQuality.flow
+        return try {
+            p.connectionQuality.flow.stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.WhileSubscribed(),
+                initialValue = p.connectionQuality
+            )
+        } catch (e: Exception) {
+            Timber.w(e) { "[CallViewModel] Failed to get connection quality flow" }
+            MutableStateFlow(ConnectionQuality.UNKNOWN).asStateFlow()
+        }
     }
     
     /**
@@ -477,7 +486,12 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      * 提供类似 getRoom().getEvents().getEvents() 的接口
      */
     fun getRoomEventsFlow(): Flow<RoomEvent> {
-        return roomManager.room.events
+        return try {
+            roomManager.room.events
+        } catch (e: Exception) {
+            Timber.w(e) { "[CallViewModel] Failed to get room events flow" }
+            emptyFlow()
+        }
     }
 }
 
