@@ -78,106 +78,89 @@ class GroupCallManager(
     
     /**
      * 开始监听群组参与者变化
+     * ✅ 修复: 使用信令驱动模式，不直接监听LiveKit事件
+     * 所有成员状态变化通过信令同步，LiveKit仅做流管理
      */
     private fun startGroupParticipantMonitoring() {
-        roomEventJob?.cancel()
-        roomEventJob = coroutineScope.launch {
-            try {
-                room.events.collect { event: RoomEvent ->
-                    when (event) {
-                        is RoomEvent.ParticipantConnected -> {
-                            handleParticipantConnected(event.participant)
-                        }
-                        is RoomEvent.ParticipantDisconnected -> {
-                            handleParticipantDisconnected(event.participant)
-                        }
-                        is RoomEvent.TrackSubscribed -> {
-                            handleTrackSubscribed(event)
-                        }
-                        is RoomEvent.TrackUnsubscribed -> {
-                            handleTrackUnsubscribed(event)
-                        }
-                        else -> {
-                            Timber.v { "[GroupCallManager] Room event: $event" }
-                        }
+        Timber.d { "[GroupCallManager] 启动群组参与者监听(信令驱动模式)" }
+        // 注意: 不直接监听LiveKit的room.events
+        // 所有成员状态变化将通过CallingVM的信令处理来同步
+        // 这里只做初始化准备工作
+    }
+    
+    /**
+     * 通过信令更新成员状态(取代直接处理LiveKit事件)
+     * ✅ 修复: 所有成员状态变化通过信令驱动
+     */
+    fun updateMemberStateFromSignaling(userId: String, isConnected: Boolean) {
+        if (expectedMemberIds.contains(userId)) {
+            Timber.d { "[GroupCallManager] 通过信令更新成员状态: $userId -> 连接:$isConnected" }
+            
+            val currentMembers = _groupMembers.value.toMutableMap()
+            
+            if (isConnected) {
+                // 成员加入 - 从房间中查找对应的Participant
+                val participant = room.remoteParticipants.values.find { 
+                    it.identity?.value == userId 
+                }
+                if (participant != null) {
+                    currentMembers[userId] = participant
+                    _groupMembers.value = currentMembers
+                    
+                    // 发送事件通知
+                    coroutineScope.launch {
+                        _groupParticipantChanges.emit(
+                            GroupParticipantChange.Connected(userId, participant)
+                        )
                     }
                 }
-            } catch (e: Exception) {
-                Timber.e(e) { "[GroupCallManager] Room event collection error" }
+            } else {
+                // 成员离开
+                val participant = currentMembers.remove(userId)
+                _groupMembers.value = currentMembers
+                
+                if (participant is RemoteParticipant) {
+                    coroutineScope.launch {
+                        _groupParticipantChanges.emit(
+                            GroupParticipantChange.Disconnected(userId, participant)
+                        )
+                    }
+                }
             }
         }
     }
     
     /**
-     * 处理参与者连接
+     * 通过信令更新轨道状态(取代直接处理LiveKit事件)
+     * ✅ 修复: 所有轨道变化通过信令驱动
      */
-    private suspend fun handleParticipantConnected(participant: RemoteParticipant) {
-        val identity = participant.identity?.value ?: return
+    fun updateTrackStateFromSignaling(userId: String, mediaType: String, isEnabled: Boolean) {
+        // 查找目标参与者
+        val participant = _groupMembers.value[userId] as? RemoteParticipant ?: return
         
-        if (expectedMemberIds.contains(identity)) {
-            Timber.d { "[GroupCallManager] 成员加入: $identity" }
-            
-            // 更新成员映射
-            val currentMembers = _groupMembers.value.toMutableMap()
-            currentMembers[identity] = participant
-            _groupMembers.value = currentMembers
-            
-            // 通知参与者变更
-            _groupParticipantChanges.emit(
-                GroupParticipantChange.Connected(identity, participant)
-            )
+        Timber.d { "[GroupCallManager] 通过信令更新轨道状态: $userId, 类型:$mediaType, 启用:$isEnabled" }
+        
+        // 查找对应的轨道
+        val trackPublication = when (mediaType.lowercase()) {
+            "audio" -> participant.audioTracks.values.firstOrNull()
+            "video" -> participant.videoTracks.values.firstOrNull()
+            else -> null
         }
-    }
-    
-    /**
-     * 处理参与者断开连接
-     */
-    private suspend fun handleParticipantDisconnected(participant: RemoteParticipant) {
-        val identity = participant.identity?.value ?: return
         
-        Timber.d { "[GroupCallManager] 成员离开: $identity" }
-        
-        // 从成员映射中移除
-        val currentMembers = _groupMembers.value.toMutableMap()
-        currentMembers.remove(identity)
-        _groupMembers.value = currentMembers
-        
-        // 通知参与者变更
-        _groupParticipantChanges.emit(
-            GroupParticipantChange.Disconnected(identity, participant)
-        )
-    }
-    
-    /**
-     * 处理轨道订阅
-     */
-    private suspend fun handleTrackSubscribed(event: RoomEvent.TrackSubscribed) {
-        val participant = event.participant as? RemoteParticipant ?: return
-        val identity = participant.identity?.value ?: return
-        
-        val trackPublication = event.trackPublication
-        Timber.d { "[GroupCallManager] 成员轨道订阅: $identity, track: ${trackPublication.track?.kind}" }
-        
-        // 通知轨道变更
-        _groupParticipantChanges.emit(
-            GroupParticipantChange.TrackSubscribed(identity, participant, trackPublication)
-        )
-    }
-    
-    /**
-     * 处理轨道取消订阅
-     */
-    private suspend fun handleTrackUnsubscribed(event: RoomEvent.TrackUnsubscribed) {
-        val participant = event.participant as? RemoteParticipant ?: return
-        val identity = participant.identity?.value ?: return
-        
-        val trackPublication = event.trackPublication
-        Timber.d { "[GroupCallManager] 成员轨道取消订阅: $identity, track: ${trackPublication.track?.kind}" }
-        
-        // 通知轨道变更
-        _groupParticipantChanges.emit(
-            GroupParticipantChange.TrackUnsubscribed(identity, participant, trackPublication)
-        )
+        // 如果找到轨道，更新其状态并发送事件
+        if (trackPublication != null) {
+            coroutineScope.launch {
+                if (isEnabled) {
+                    _groupParticipantChanges.emit(
+                        GroupParticipantChange.TrackSubscribed(userId, participant, trackPublication)
+                    )
+                } else {
+                    _groupParticipantChanges.emit(
+                        GroupParticipantChange.TrackUnsubscribed(userId, participant, trackPublication)
+                    )
+                }
+            }
+        }
     }
     
     /**
