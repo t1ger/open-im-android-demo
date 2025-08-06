@@ -338,33 +338,43 @@ class MultiStreamManager(
     private fun startSpeakerDetection() {
         coroutineScope.launch {
             try {
-                // 监听LiveKit的activeSpeakers事件
-                room.activeSpeakers.flow.collect { speakers: List<Participant> ->
-                    val speakerIds = speakers.mapNotNull { it.identity?.value }.toSet()
-                    _activeSpeakers.value = speakerIds
-                    
-                    // 更新主要说话者（选择第一个远程说话者）
-                    val primarySpeaker = speakers
-                        .filterIsInstance<RemoteParticipant>()
-                        .firstOrNull()?.identity?.value
-                    
-                    if (primarySpeaker != _primarySpeaker.value) {
-                        _primarySpeaker.value = primarySpeaker
-                        
-                        // 主要说话者变化时，提升其优先级
-                        if (primarySpeaker != null) {
-                            updateStreamPriority(primarySpeaker, StreamPriority.HIGH)
-                        }
-                        
-                        Timber.d { "[MultiStreamManager] 主要说话者变更: $primarySpeaker" }
-                    }
-                    
-                    // 触发优先级重新调度
-                    scheduleStreamPriorities()
-                }
+                // 暂时禁用直接订阅LiveKit事件，改为信令驱动模式
+                Timber.d { "[MultiStreamManager] 说话者检测已启动 - 信令驱动模式" }
+                // TODO: 通过CallingVM的信令通知更新活跃扬声器
             } catch (e: Exception) {
                 Timber.e(e) { "[MultiStreamManager] Speaker detection error" }
             }
+        }
+    }
+    
+    /**
+     * 通过信令更新活跃扬声器 - 由CallingVM调用
+     */
+    fun updateActiveSpeakersFromSignaling(speakers: List<Participant>) {
+        try {
+            val speakerIds = speakers.mapNotNull { it.identity?.value }.toSet()
+            _activeSpeakers.value = speakerIds
+            
+            // 更新主要说话者（选择第一个远程说话者）
+            val primarySpeaker = speakers
+                .filterIsInstance<RemoteParticipant>()
+                .firstOrNull()?.identity?.value
+            
+            if (primarySpeaker != _primarySpeaker.value) {
+                _primarySpeaker.value = primarySpeaker
+                
+                // 主要说话者变化时，提升其优先级
+                if (primarySpeaker != null) {
+                    updateStreamPriority(primarySpeaker, StreamPriority.HIGH)
+                }
+                
+                Timber.d { "[MultiStreamManager] 通过信令更新主要说话者: $primarySpeaker" }
+            }
+            
+            // 触发优先级重新调度
+            scheduleStreamPriorities()
+        } catch (e: Exception) {
+            Timber.e(e) { "[MultiStreamManager] 通过信令更新活跃扬声器异常" }
         }
     }
     

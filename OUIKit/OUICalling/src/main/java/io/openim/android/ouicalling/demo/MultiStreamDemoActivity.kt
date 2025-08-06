@@ -79,13 +79,18 @@ class MultiStreamDemoActivity : AppCompatActivity() {
     
     private fun initViews() {
         // 创建RecyclerView（如果layout中没有的话）
-        recyclerView = findViewById<RecyclerView?>(R.id.recyclerView) ?: RecyclerView(this).apply {
-            layoutParams = android.view.ViewGroup.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT
-            )
+        val foundRecyclerView = findViewById<RecyclerView?>(R.id.recyclerView)
+        if (foundRecyclerView != null) {
+            recyclerView = foundRecyclerView
+        } else {
+            recyclerView = RecyclerView(this).apply {
+                layoutParams = android.view.ViewGroup.LayoutParams(
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                )
+            }
             // 如果没有找到RecyclerView，设置为内容视图
-            setContentView(this)
+            setContentView(recyclerView)
         }
     }
     
@@ -113,14 +118,8 @@ class MultiStreamDemoActivity : AppCompatActivity() {
                 Timber.d { "[MultiStreamDemo] 活跃说话者数量: ${speakers.size}" }
                 
                 // 根据说话者更新优先级
-                speakers.forEach { speaker ->
-                    // 修复: 使用正确的identity访问方式
-                    val participantId = try {
-                        speaker.identity?.value ?: ""
-                    } catch (e: Exception) {
-                        Timber.w(e) { "[MultiStreamDemo] Failed to get participant identity" }
-                        ""
-                    }
+                speakers.forEach { participantId ->
+                    // activeSpeakersMulti 返回的是 String 类型的参与者ID
                     if (participantId.isNotEmpty()) {
                         callViewModel.updateStreamPriority(participantId, StreamPriority.HIGH)
                     }

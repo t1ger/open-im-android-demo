@@ -46,7 +46,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private val deviceManager = MediaDeviceManager(roomManager.room, viewModelScope)
     private val groupManager = GroupCallManager(roomManager.room, viewModelScope)  
     private val videoManager = VideoBindingManager(roomManager.room, viewModelScope)
-    private val speakerManager = SpeakerManager(roomManager.room)
+    private val speakerManager = SpeakerManager(roomManager.room, viewModelScope)
     private val scopeManager = CoroutineScopeManager()
     
     // Week 2 Day 6: 多路视频流管理器
@@ -60,7 +60,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     
     // ===== 参与者相关 =====
     val allParticipants = speakerManager.allParticipants
-    val remoteParticipants = roomManager.room.remoteParticipants.flow
+    // 暂时移除直接的Flow暴露，改为通过信令更新
+    // val remoteParticipants = roomManager.room.remoteParticipants.flow
     var singleRemotePar: RemoteParticipant? = null
     
     // ===== 状态管理 =====
@@ -93,7 +94,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     val performanceReport = streamMonitor.performanceReport
     
     // 房间元数据
-    val roomMetadata = roomManager.room.metadata.flow
+    // 暂时移除直接的Flow暴露，改为通过信令更新
+    // val roomMetadata = roomManager.room.metadata.flow
     
     // 数据接收
     private val mutableDataReceived = MutableSharedFlow<String>()
@@ -386,16 +388,15 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 获取连接质量Flow
      */
-    fun getConnectionFlow(p: Participant): StateFlow<ConnectionQuality> {
+    /**
+     * 获取连接质量 - 不直接暴露Flow，改为返回当前值
+     */
+    fun getConnectionQuality(p: Participant): ConnectionQuality {
         return try {
-            p.connectionQuality.flow.stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(),
-                initialValue = p.connectionQuality
-            )
+            p.connectionQuality
         } catch (e: Exception) {
-            Timber.w(e) { "[CallViewModel] Failed to get connection quality flow" }
-            MutableStateFlow(ConnectionQuality.UNKNOWN).asStateFlow()
+            Timber.w(e) { "[CallViewModel] Failed to get connection quality" }
+            ConnectionQuality.UNKNOWN
         }
     }
     

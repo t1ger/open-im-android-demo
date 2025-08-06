@@ -143,21 +143,21 @@ class GroupCallManager(
         
         // 查找对应的轨道
         val trackPublication = when (mediaType.lowercase()) {
-            "audio" -> participant.audioTrackPublications.firstOrNull()?.value
-            "video" -> participant.videoTrackPublications.firstOrNull()?.value  
+            "audio" -> participant.audioTrackPublications.values.firstOrNull()
+            "video" -> participant.videoTrackPublications.values.firstOrNull()
             else -> null
         }
         
         // 如果找到轨道，更新其状态并发送事件
-        if (trackPublication != null) {
+        trackPublication?.let { publication ->
             coroutineScope.launch {
                 if (isEnabled) {
                     _groupParticipantChanges.emit(
-                        GroupParticipantChange.TrackSubscribed(userId, participant, trackPublication)
+                        GroupParticipantChange.TrackSubscribed(userId, participant, publication)
                     )
                 } else {
                     _groupParticipantChanges.emit(
-                        GroupParticipantChange.TrackUnsubscribed(userId, participant, trackPublication)
+                        GroupParticipantChange.TrackUnsubscribed(userId, participant, publication)
                     )
                 }
             }
@@ -207,20 +207,16 @@ class GroupCallManager(
     }
     
     /**
-     * 获取参与者的连接质量
+     * 获取参与者的连接质量 - 通过信令更新，不直接暴露LiveKit Flow
      */
-    fun getParticipantConnectionQuality(participantId: String): StateFlow<io.livekit.android.room.participant.ConnectionQuality>? {
+    fun getParticipantConnectionQuality(participantId: String): io.livekit.android.room.participant.ConnectionQuality? {
         val participant = getParticipantById(participantId) ?: return null
         return try {
-            // 使用LiveKit的flow扩展属性
-            participant.connectionQuality.flow.stateIn(
-                scope = coroutineScope,
-                started = SharingStarted.WhileSubscribed(),
-                initialValue = participant.connectionQuality
-            )
+            // 直接返回当前值，不暴露Flow
+            participant.connectionQuality
         } catch (e: Exception) {
             Timber.w(e) { "[GroupCallManager] Failed to get connection quality for $participantId" }
-            null
+            io.livekit.android.room.participant.ConnectionQuality.UNKNOWN
         }
     }
     

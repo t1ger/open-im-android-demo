@@ -4,35 +4,110 @@ import io.livekit.android.room.Room
 import io.livekit.android.room.participant.LocalParticipant
 import io.livekit.android.room.participant.Participant
 import io.livekit.android.room.participant.RemoteParticipant
-import io.livekit.android.util.flow
-import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.CoroutineScope
 import com.github.ajalt.timberkt.Timber
 
 /**
- * 扬声器管理器
- * 专门负责主要扬声器的选择和音频焦点管理
+ * 扬声器管理器 - 重构版本
+ * 
+ * 架构原则：
+ * 1. 不直接暴露LiveKit的Flow
+ * 2. 通过信令驱动状态更新
+ * 3. 提供业务级别的抽象接口
+ * 4. 完全封装LiveKit实现细节
  */
-class SpeakerManager(private val room: Room) {
+class SpeakerManager(
+    private val room: Room,
+    private val coroutineScope: CoroutineScope
+) {
     
-    // 主要扬声器
+    // ===== 状态管理 =====
+    // 主要扬声器状态
     private val _primarySpeaker = MutableStateFlow<Participant?>(null)
     val primarySpeaker: StateFlow<Participant?> = _primarySpeaker.asStateFlow()
     
-    // 活跃扬声器列表
-    val activeSpeakers: Flow<List<Participant>> = try {
-        room.activeSpeakers.flow
-    } catch (e: Exception) {
-        flowOf<List<Participant>>(emptyList())
+    // 活跃扬声器列表 - 通过信令更新，而非直接订阅LiveKit
+    private val _activeSpeakers = MutableStateFlow<List<Participant>>(emptyList())
+    val activeSpeakers: StateFlow<List<Participant>> = _activeSpeakers.asStateFlow()
+    
+    // 所有参与者（本地 + 远程） - 通过信令更新
+    private val _allParticipants = MutableStateFlow<List<Participant>>(listOf(room.localParticipant))
+    val allParticipants: StateFlow<List<Participant>> = _allParticipants.asStateFlow()
+    
+    // ===== 初始化 =====
+    init {
+        initializeSpeakerManagement()
     }
     
-    // 所有参与者（本地 + 远程）
-    val allParticipants: Flow<List<Participant>> = try {
-        room.remoteParticipants.flow.map { remoteParticipants ->
-            listOf<Participant>(room.localParticipant) + remoteParticipants.values
+    /**
+     * 初始化扬声器管理 - 通过信令驱动，而非直接订阅LiveKit事件
+     */
+    private fun initializeSpeakerManagement() {
+        try {
+            Timber.d { "[SpeakerManager] 初始化扬声器管理 - 信令驱动模式" }
+            // 设置初始状态
+            updateAllParticipants()
+            _primarySpeaker.value = room.localParticipant
+        } catch (e: Exception) {
+            Timber.e(e) { "[SpeakerManager] 初始化扬声器管理异常" }
         }
-    } catch (e: Exception) {
-        flowOf<List<Participant>>(listOf(room.localParticipant))
     }
+    
+    // ===== 信令驱动的状态更新接口 =====
+    
+    /**
+     * 通过信令更新活跃扬声器 - 由CallingVM调用
+     * @param speakers 活跃扬声器列表
+     */
+    fun updateActiveSpeakers(speakers: List<Participant>) {
+        try {
+            _activeSpeakers.value = speakers
+            Timber.d { "[SpeakerManager] 通过信令更新活跃扬声器: ${speakers.size}" }
+        } catch (e: Exception) {
+            Timber.e(e) { "[SpeakerManager] 更新活跃扬声器异常" }
+        }
+    }
+    
+    /**
+     * 通过信令更新所有参与者 - 由CallingVM调用
+     */
+    fun updateAllParticipants() {
+        try {
+            val participants = listOf<Participant>(room.localParticipant) + room.remoteParticipants.values
+            _allParticipants.value = participants
+            Timber.d { "[SpeakerManager] 通过信令更新所有参与者: ${participants.size}" }
+        } catch (e: Exception) {
+            Timber.e(e) { "[SpeakerManager] 更新所有参与者异常" }
+        }
+    }
+    
+    /**
+     * 通过信令更新参与者变化 - 由CallingVM调用
+     * @param participantId 参与者ID
+     * @param joined 是否加入（true=加入，false=离开）
+     */
+    fun updateParticipantChange(participantId: String, joined: Boolean) {
+        try {
+            updateAllParticipants()
+            
+            if (!joined) {
+                // 如果离开的是当前主要扬声器，需要重新选择
+                val currentPrimary = _primarySpeaker.value
+                if (currentPrimary?.identity?.value == participantId) {
+                    selectNewPrimarySpeaker()
+                }
+            }
+            
+            Timber.d { "[SpeakerManager] 通过信令更新参与者变化: $participantId, joined=$joined" }
+        } catch (e: Exception) {
+            Timber.e(e) { "[SpeakerManager] 更新参与者变化异常" }
+        }
+    }
+    
+    // ===== 业务逻辑 =====
     
     /**
      * 处理主要扬声器逻辑
@@ -94,14 +169,20 @@ class SpeakerManager(private val room: Room) {
     }
     
     /**
-     * 获取活跃扬声器StateFlow
+     * 选择新的主要扬声器
      */
-    fun getActiveSpeakersFlow(): StateFlow<List<Participant>> {
-        return activeSpeakers.stateIn(
-            scope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main),
-            started = SharingStarted.WhileSubscribed(5000),
-            initialValue = emptyList()
-        )
+    private fun selectNewPrimarySpeaker() {
+        try {
+            val participants = _allParticipants.value
+            val newSpeaker = participants
+                .filterIsInstance<RemoteParticipant>()
+                .firstOrNull() ?: room.localParticipant
+                
+            _primarySpeaker.value = newSpeaker
+            Timber.d { "[SpeakerManager] 选择新的主要扬声器: ${newSpeaker?.identity?.value}" }
+        } catch (e: Exception) {
+            Timber.e(e) { "[SpeakerManager] 选择新主要扬声器异常" }
+        }
     }
     
     /**
@@ -125,12 +206,28 @@ class SpeakerManager(private val room: Room) {
     }
     
     /**
+     * 获取当前活跃扬声器列表
+     */
+    fun getCurrentActiveSpeakers(): List<Participant> {
+        return _activeSpeakers.value
+    }
+    
+    /**
+     * 获取当前所有参与者列表
+     */
+    fun getCurrentAllParticipants(): List<Participant> {
+        return _allParticipants.value
+    }
+    
+    /**
      * 重置扬声器状态
      */
     fun reset() {
         try {
             Timber.d { "[SpeakerManager] 重置扬声器状态" }
             _primarySpeaker.value = null
+            _activeSpeakers.value = emptyList()
+            _allParticipants.value = listOf(room.localParticipant)
         } catch (e: Exception) {
             Timber.e(e) { "[SpeakerManager] 重置扬声器状态异常" }
         }
