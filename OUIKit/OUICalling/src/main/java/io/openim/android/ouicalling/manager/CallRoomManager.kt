@@ -1,7 +1,7 @@
 package io.openim.android.ouicalling.manager
 
 import android.app.Application
-import androidx.lifecycle.viewModelScope
+// Removed incorrect viewModelScope import
 import io.livekit.android.LiveKit
 import io.livekit.android.RoomOptions
 import io.livekit.android.room.Room
