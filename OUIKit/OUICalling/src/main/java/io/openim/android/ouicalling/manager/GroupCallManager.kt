@@ -143,8 +143,8 @@ class GroupCallManager(
         
         // 查找对应的轨道
         val trackPublication = when (mediaType.lowercase()) {
-            "audio" -> participant.audioTrackPublications.values.firstOrNull()
-            "video" -> participant.videoTrackPublications.values.firstOrNull()
+            "audio" -> participant.audioTrackPublications.firstOrNull()?.value
+            "video" -> participant.videoTrackPublications.firstOrNull()?.value  
             else -> null
         }
         

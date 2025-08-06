@@ -41,7 +41,8 @@ class VideoBindingManager(
             
             // 观察视频轨道变化
             val videoTrackPubFlow = try {
-                participant.videoTrackPublications.flow
+                // LiveKit 2.0.1 API: 直接使用 videoTrackPublications
+                flowOf(participant.videoTrackPublications)
                     .map { videoTracks -> participant to videoTracks }
                     .flatMapLatest { (participant, videoTracks) ->
                         // 优先选择屏幕共享，其次是摄像头

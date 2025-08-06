@@ -20,7 +20,7 @@ class SpeakerManager(private val room: Room) {
     
     // 活跃扬声器列表
     val activeSpeakers: Flow<List<Participant>> = try {
-        room.activeSpeakers
+        room.activeSpeakers.flow
     } catch (e: Exception) {
         flowOf<List<Participant>>(emptyList())
     }

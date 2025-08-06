@@ -487,7 +487,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun getRoomEventsFlow(): Flow<RoomEvent> {
         return try {
-            roomManager.room.events
+            roomManager.room.events.events
         } catch (e: Exception) {
             Timber.w(e) { "[CallViewModel] Failed to get room events flow" }
             emptyFlow()
