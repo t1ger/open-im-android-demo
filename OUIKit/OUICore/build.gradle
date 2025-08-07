@@ -43,7 +43,7 @@ android {
 }
 
 dependencies {
-    api fileTree(dir: 'libs', include: ['*.jar', '*.aar'])
+    api fileTree(dir: 'libs', include: ['*.jar'])
     //openIM sdk
     api "io.openim:core-sdk:${rootProject.ext.versions.android_sdk_core}"
     api "io.openim:android-sdk:${rootProject.ext.versions.android_sdk}"
@@ -88,6 +88,9 @@ dependencies {
     api 'com.github.AurelionX:WaterMarkView:1.1.2'
     api 'org.raphets:roundimageview:1.2.0'
     api 'com.github.simonebortolin:FlowLayoutManager:1.8.0'
+    
+    // EasyWindow 依赖
+    api 'com.github.getActivity:EasyWindow:10.2'
 
     api "com.vanniktech:emoji-android:0.16.0"
     api "com.vanniktech:emoji-google-android:0.16.0"

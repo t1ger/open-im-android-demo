@@ -8,3 +8,51 @@ build
 .externalNativeBuild
 .cxx
 local.properties
+
+# Clacky-related configuration
+.clackyai/
+*.1024
+
+# Android-specific files
+*.keystore
+*.jks
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+
+# Build output
+*/build/
+build/
+out/
+
+# Android Studio files
+*.iws
+*.ipr
+*~
+*.swp
+*.tmp
+*.bak
+
+# Log files
+*.log
+
+# Gradle wrapper
+gradle-wrapper.properties
+
+# NDK
+obj/
+
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+
+# Cache files
+.cache/
+*.cache
+
+# Backup files
+*~.nib
+*.orig
