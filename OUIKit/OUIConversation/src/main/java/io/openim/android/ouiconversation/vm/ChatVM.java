@@ -37,6 +37,7 @@ import javax.annotation.Nullable;
 
 import io.openim.android.ouiconversation.adapter.MessageAdapter;
 import io.openim.android.ouicore.base.BaseApp;
+import io.openim.android.ouicore.base.vm.injection.Easy;
 import io.openim.android.ouicore.base.vm.State;
 import io.openim.android.ouicore.entity.BurnAfterReadingNotification;
 import io.openim.android.ouicore.entity.JoinKickedGroupNotification;
@@ -45,6 +46,7 @@ import io.openim.android.ouicore.entity.NotificationMsg;
 import io.openim.android.ouicore.ex.AtUser;
 import io.openim.android.ouicore.net.bage.GsonHel;
 import io.openim.android.ouicore.services.CallingService;
+import io.openim.android.ouicalling.vm.CallingVM;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.Constants;
 import io.openim.android.ouicore.base.BaseViewModel;
@@ -968,11 +970,11 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
 
     /**
      * 发起群组通话
-     * 从 ChatActivity 中移过来的业务逻辑
+     * 正确的实现：调用CallingVM.initiateGroupCall()而不是CallingService.call()
      */
     private void initiateGroupCall() {
-        if (null == callingService || TextUtils.isEmpty(groupID)) {
-            getIView().toast("通话服务不可用");
+        if (TextUtils.isEmpty(groupID)) {
+            getIView().toast("群组信息不可用");
             return;
         }
 
@@ -1008,9 +1010,14 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
                             return;
                         }
                         
-                        // 构建群组通话参数并发起通话
-                        SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideoCall, groupID, memberIds);
-                        callingService.call(groupSignalingInfo);
+                        // 🔧 修复关键问题：调用CallingVM.initiateGroupCall()而不是CallingService.call()
+                        // 这样会正确显示九宫格界面而不是单人通话界面
+                        CallingVM callingVM = Easy.find(CallingVM.class);
+                        if (callingVM != null) {
+                            callingVM.initiateGroupCall(groupID, memberIds, isVideoCall);
+                        } else {
+                            getIView().toast("通话服务不可用");
+                        }
                         
                     } catch (Exception e) {
                         getIView().toast("发起群组通话失败: " + e.getMessage());

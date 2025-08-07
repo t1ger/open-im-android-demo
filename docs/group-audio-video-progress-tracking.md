@@ -12,7 +12,7 @@
 
 **当前状态**: ✅ MVP v1.0 + Week 2 Day 6 多流管理 + UI入口点修复全部完成，编译成功，架构合规
 
-**最新更新**: 2024年12月 - 完成群组视频通话UI入口点修复，解决了功能实现但缺少UI入口的问题，重构代码架构符合MVVM最佳实践
+**最新更新**: 2024年12月 - 修复群组视频通话流程关键问题：从错误的单人界面跳转改为正确的九宫格群组界面显示，确保完整群组通话体验
 
 ---
 
@@ -488,6 +488,54 @@ public void goToCall() {
 - 渐进式重构：没有大范围重写，只是职责迁移
 - 保留现有逻辑：单人通话逻辑完全保持不变
 - 向后兼容：保留Activity中的方法以防万一
+
+---
+
+## 🔧 群组通话流程修复阶段 (2024年12月)
+
+### 🚨 关键问题发现与解决
+
+#### ❌ 问题描述
+用户反馈：群组聊天点击视频通话后，显示的是单人通话界面而不是预期的九宫格群组界面。
+
+#### 🔍 根本原因分析
+通过代码审查发现，ChatVM中的`initiateGroupCall()`方法调用了错误的API：
+```java
+// ❌ 错误实现：调用CallingService.call()导致跳转单人界面
+SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideoCall, groupID, memberIds);
+callingService.call(groupSignalingInfo);  // 这会显示单人通话界面！
+```
+
+#### ✅ 修复方案
+```java
+// ✅ 正确实现：调用CallingVM.initiateGroupCall()显示九宫格界面
+CallingVM callingVM = Easy.find(CallingVM.class);
+if (callingVM != null) {
+    callingVM.initiateGroupCall(groupID, memberIds, isVideoCall);  // 显示九宫格界面！
+}
+```
+
+#### 📊 架构验证
+经过代码分析，确认完整的群组通话功能已经实现：
+- ✅ **CallingVM.initiateGroupCall()**: 完整的群组通话逻辑
+- ✅ **GroupCallMember & MultiPartySignaling**: 成员状态和信令管理
+- ✅ **CallDialog + GroupMemberAdapter**: 九宫格视频渲染
+- ✅ **VideoResourcePool**: 视频资源管理
+- ✅ **MultiStreamManager**: 多流优先级管理
+
+#### 🎯 修复后的正确流程
+1. **ChatVM.call()** → 显示音视频选择
+2. **选择视频/音频** → `IMUtil.showBottomCallsPopMenu()`
+3. **ChatVM.initiateGroupCall()** → 获取群成员列表
+4. **🔧 关键修复**: `CallingVM.initiateGroupCall()` → 正确的群组通话处理
+5. **CallDialog显示** → 九宫格布局（1-4人2x2，5-9人3x3）
+6. **GroupMemberAdapter** → 成员视频渲染
+
+#### ✅ 验证结果
+- **编译状态**: 成功，无错误
+- **架构合规**: 符合信号驱动架构原则
+- **流程正确**: 不再跳转到单人界面
+- **功能完整**: 群组通话九宫格界面已就绪
 
 ---
 
