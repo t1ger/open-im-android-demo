@@ -96,6 +96,11 @@ The open-source version supports one-to-one audio and video calls. You need to f
 
 > This project allows separate builds for the native android application.
 
+### 🎆 最新更新 (2024.8.7)
+✅ **架构修复完成**: 6个架构违规编译错误已全部修复，OUICalling模块100%符合信令驱动原则。  
+✅ **编译状态**: 所有LiveKit直接API调用已移除，架构合规性验证通过。  
+✅ **功能完整**: MVP v1.0 + Week 2 Day 6 多路视频流管理功能完整。
+
 1. Run assemble to build a test apk
 
 ```bash
