@@ -978,11 +978,8 @@ public class CallDialog extends BaseDialog {
             if (groupMemberAdapter != null) {
                 groupMemberAdapter.releaseAllVideoRenderers();
             }
-            // 释放VideoResourcePool中的资源
-            VideoResourcePool resourcePool = callingVM.getVideoResourcePool();
-            if (resourcePool != null) {
-                resourcePool.clear();
-            }
+            // Week 2 Day 6: 通过Manager层清理视频资源，遵循信号驱动架构
+            callingVM.cleanupGroupVideoResources();
             // 清理定时任务
             clearUpdateTask();
         } else {

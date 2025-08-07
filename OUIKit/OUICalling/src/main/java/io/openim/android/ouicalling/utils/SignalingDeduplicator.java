@@ -82,7 +82,7 @@ public class SignalingDeduplicator {
      */
     public boolean handleSignalingWithDeduplication(
             MultiPartySignaling signaling, 
-            SignalingProcessor processor) {
+            SignalingProcessor processor) throws Exception {
         
         if (signaling == null) {
             Log.w(TAG, "信令对象为空");
