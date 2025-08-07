@@ -66,6 +66,7 @@ public class CallDialog extends BaseDialog {
     private DialogCallBinding view;
     private GroupCallViewHelper groupViewHelper; // 群组通话视图助手
     private GroupMemberAdapter groupMemberAdapter; // 群组成员适配器
+    private View groupView; // 群组通话视图
     private boolean isGroupCall = false; // 是否群组通话
     private Handler updateHandler; // 用于定时更新的Handler
     private Runnable updateTask; // 更新任务
@@ -156,7 +157,7 @@ public class CallDialog extends BaseDialog {
         if (isGroupCall) return; // 已经是群组模式
         
         isGroupCall = true;
-        View groupView = getLayoutInflater().inflate(R.layout.dialog_group_call, null);
+        groupView = getLayoutInflater().inflate(R.layout.dialog_group_call, null);
         groupViewHelper = new GroupCallViewHelper(groupView);
         setContentView(groupView);
         
@@ -251,7 +252,7 @@ public class CallDialog extends BaseDialog {
             
             // 获取当前流统计信息用于日志
             if (callingVM.callViewModel.getAllGroupParticipants() != null) {
-                var streamStats = callingVM.callViewModel.getStreamStatistics();
+                StreamStatistics streamStats = callingVM.callViewModel.getStreamStatistics();
                 
                 android.util.Log.d("CallDialog", "refreshGroupVideoBindings: MultiStream Status - " + 
                     "Total: " + streamStats.getTotalStreams() + 
@@ -286,7 +287,7 @@ public class CallDialog extends BaseDialog {
                 callingVM.callViewModel.stopPerformanceMonitoring();
                 
                 // 输出性能摘要
-                var summary = callingVM.callViewModel.getPerformanceSummary();
+                PerformanceSummary summary = callingVM.callViewModel.getPerformanceSummary();
                 android.util.Log.i("CallDialog", "Performance Summary - " +
                     "Duration: " + (summary.getMonitoringDurationMs() / 1000) + "s, " +
                     "Frames: " + summary.getTotalFramesRendered() + ", " +

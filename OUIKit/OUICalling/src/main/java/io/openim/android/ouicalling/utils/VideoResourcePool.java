@@ -2,7 +2,7 @@ package io.openim.android.ouicalling.utils;
 
 import android.util.Log;
 
-import org.webrtc.SurfaceViewRenderer;
+import io.livekit.android.renderer.TextureViewRenderer;
 
 import java.lang.ref.WeakReference;
 import java.util.ArrayList;
@@ -33,13 +33,13 @@ public class VideoResourcePool {
     private static final int MAX_TEXTURE_RENDERERS = 12;
     
     // 空闲渲染器池
-    private final Queue<SurfaceViewRenderer> rendererPool = new LinkedList<>();
+    private final Queue<TextureViewRenderer> rendererPool = new LinkedList<>();
     
     // 活跃渲染器映射 <ParticipantId, Renderer>
-    private final Map<String, SurfaceViewRenderer> activeRenderers = new HashMap<>();
+    private final Map<String, TextureViewRenderer> activeRenderers = new HashMap<>();
     
     // Owner引用映射，用于内存泄漏防护 <Owner, RendererList>
-    private final WeakHashMap<Object, List<SurfaceViewRenderer>> ownerMap = new WeakHashMap<>();
+    private final WeakHashMap<Object, List<TextureViewRenderer>> ownerMap = new WeakHashMap<>();
     
     // 性能统计
     private int totalCreated = 0;
@@ -52,7 +52,7 @@ public class VideoResourcePool {
      * @param owner 拥有者对象（用于内存泄漏防护）
      * @return 渲染器实例
      */
-    public synchronized SurfaceViewRenderer acquireRenderer(String participantId, Object owner) {
+    public synchronized TextureViewRenderer acquireRenderer(String participantId, Object owner) {
         if (participantId == null || participantId.trim().isEmpty()) {
             Log.w(TAG, "参与者ID为空，无法分配渲染器");
             return null;
@@ -63,13 +63,13 @@ public class VideoResourcePool {
         }
 
         // 检查是否已经分配过
-        SurfaceViewRenderer existingRenderer = activeRenderers.get(participantId);
+        TextureViewRenderer existingRenderer = activeRenderers.get(participantId);
         if (existingRenderer != null) {
             Log.d(TAG, "重复请求渲染器: " + participantId);
             return existingRenderer;
         }
 
-        SurfaceViewRenderer renderer;
+        TextureViewRenderer renderer;
         
         // 尝试从池中复用
         renderer = rendererPool.poll();
@@ -84,7 +84,7 @@ public class VideoResourcePool {
             }
 
             try {
-                renderer = new SurfaceViewRenderer(BaseApp.inst());
+                renderer = new TextureViewRenderer(BaseApp.inst());
                 // 这里需要在实际使用时初始化renderer
                 // callViewModel.getRoom().initVideoRenderer(renderer);
                 
@@ -124,7 +124,7 @@ public class VideoResourcePool {
             return;
         }
 
-        SurfaceViewRenderer renderer = activeRenderers.remove(participantId);
+        TextureViewRenderer renderer = activeRenderers.remove(participantId);
         if (renderer == null) {
             Log.w(TAG, "尝试释放不存在的渲染器: " + participantId);
             return;
@@ -158,7 +158,7 @@ public class VideoResourcePool {
             return;
         }
 
-        List<SurfaceViewRenderer> renderers = ownerMap.remove(owner);
+        List<TextureViewRenderer> renderers = ownerMap.remove(owner);
         if (renderers == null || renderers.isEmpty()) {
             return;
         }
@@ -166,7 +166,7 @@ public class VideoResourcePool {
         int releasedCount = 0;
         
         // 查找并释放相关的渲染器
-        for (Map.Entry<String, SurfaceViewRenderer> entry : new HashMap<>(activeRenderers).entrySet()) {
+        for (Map.Entry<String, TextureViewRenderer> entry : new HashMap<>(activeRenderers).entrySet()) {
             if (renderers.contains(entry.getValue())) {
                 releaseRenderer(entry.getKey());
                 releasedCount++;
@@ -184,7 +184,7 @@ public class VideoResourcePool {
         Log.i(TAG, "开始清理所有渲染器资源");
 
         // 清理活跃渲染器
-        for (Map.Entry<String, SurfaceViewRenderer> entry : activeRenderers.entrySet()) {
+        for (Map.Entry<String, TextureViewRenderer> entry : activeRenderers.entrySet()) {
             cleanupRenderer(entry.getValue());
             Log.v(TAG, "清理活跃渲染器: " + entry.getKey());
         }
@@ -192,7 +192,7 @@ public class VideoResourcePool {
 
         // 清理池中渲染器
         while (!rendererPool.isEmpty()) {
-            SurfaceViewRenderer renderer = rendererPool.poll();
+            TextureViewRenderer renderer = rendererPool.poll();
             destroyRenderer(renderer);
         }
 
@@ -226,7 +226,7 @@ public class VideoResourcePool {
     /**
      * 重置渲染器状态
      */
-    private void resetRenderer(SurfaceViewRenderer renderer) {
+    private void resetRenderer(TextureViewRenderer renderer) {
         try {
             // 清理之前的图像
             renderer.clearImage();
@@ -235,7 +235,7 @@ public class VideoResourcePool {
             renderer.setMirror(false);
             
             // 重置缩放模式
-            renderer.setScalingType(org.webrtc.RendererCommon.ScalingType.SCALE_ASPECT_FILL);
+            // TextureViewRenderer不需要设置ScalingType，使用默认的SCALE_ASPECT_FIT
             
         } catch (Exception e) {
             Log.w(TAG, "重置渲染器状态失败", e);
@@ -245,7 +245,7 @@ public class VideoResourcePool {
     /**
      * 清理渲染器资源
      */
-    private void cleanupRenderer(SurfaceViewRenderer renderer) {
+    private void cleanupRenderer(TextureViewRenderer renderer) {
         try {
             renderer.clearImage();
             // 不释放surface，留待复用
@@ -257,7 +257,7 @@ public class VideoResourcePool {
     /**
      * 销毁渲染器
      */
-    private void destroyRenderer(SurfaceViewRenderer renderer) {
+    private void destroyRenderer(TextureViewRenderer renderer) {
         try {
             renderer.clearImage();
             renderer.release();

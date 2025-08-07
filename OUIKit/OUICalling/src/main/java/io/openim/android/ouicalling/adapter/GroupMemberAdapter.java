@@ -117,10 +117,8 @@ public class GroupMemberAdapter extends RecyclerView.Adapter<GroupMemberAdapter.
             nameText = itemView.findViewById(R.id.name);
             micIcon = itemView.findViewById(R.id.micOn);
             
-            // 从资源池获取VideoRenderer
-            if (resourcePool != null) {
-                resourcePool.initRenderer(videoRenderer);
-            }
+            // TextureViewRenderer不需要特殊初始化
+            // LiveKit的TextureViewRenderer在创建时已经自动初始化
         }
         
         /**
@@ -161,7 +159,7 @@ public class GroupMemberAdapter extends RecyclerView.Adapter<GroupMemberAdapter.
             CallMemberState state = member.getState();
             
             switch (state) {
-                case CALLING:
+                case INVITING:
                     // 呼叫中：显示头像，隐藏视频
                     showAvatar();
                     break;
@@ -338,23 +336,7 @@ public class GroupMemberAdapter extends RecyclerView.Adapter<GroupMemberAdapter.
         }
     }
     
-    /**
-     * 更新成员列表数据
-     */
-    public void updateMembers(List<GroupCallMember> newMembers) {
-        if (newMembers == null) {
-            newMembers = new ArrayList<>();
-        }
-        
-        // 更新数据
-        this.memberList.clear();
-        this.memberList.addAll(newMembers);
-        
-        // 通知数据变化
-        notifyDataSetChanged();
-        
-        android.util.Log.d("GroupMemberAdapter", "updateMembers: Updated " + newMembers.size() + " members");
-    }
+
     
     /**
      * 刷新视频绑定状态

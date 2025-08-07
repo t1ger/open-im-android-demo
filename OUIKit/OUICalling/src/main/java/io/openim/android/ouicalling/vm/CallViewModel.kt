@@ -350,7 +350,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * 获取参与者的连接质量
      */
-    fun getParticipantConnectionQuality(participantId: String): StateFlow<ConnectionQuality>? =
+    fun getParticipantConnectionQuality(participantId: String): ConnectionQuality? =
         groupManager.getParticipantConnectionQuality(participantId)
     
     // ===== 扬声器管理接口 =====
@@ -398,6 +398,17 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             Timber.w(e) { "[CallViewModel] Failed to get connection quality" }
             ConnectionQuality.UNKNOWN
         }
+    }
+    
+    /**
+     * 获取远程参与者列表
+     */
+    fun getRemoteParticipants(): StateFlow<List<RemoteParticipant>> {
+        return roomManager.room.remoteParticipants.flow.stateIn(
+            viewModelScope,
+            SharingStarted.WhileSubscribed(),
+            emptyList()
+        )
     }
     
     /**

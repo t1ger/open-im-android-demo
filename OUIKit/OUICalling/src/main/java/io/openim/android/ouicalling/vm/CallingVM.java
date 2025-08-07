@@ -921,8 +921,4 @@ public class CallingVM {
         return groupRoomId;
     }
 
-    public VideoResourcePool getResourcePool() {
-        return resourcePool;
-    }
-
 }

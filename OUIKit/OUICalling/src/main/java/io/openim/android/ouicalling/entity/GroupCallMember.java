@@ -1,6 +1,6 @@
 package io.openim.android.ouicalling.entity;
 
-import org.webrtc.SurfaceViewRenderer;
+import io.livekit.android.renderer.TextureViewRenderer;
 
 /**
  * 群组通话成员实体类
@@ -16,7 +16,7 @@ public class GroupCallMember {
     private boolean isSpeaking = false;             // 是否正在说话 (v1.2实现)
     private int networkQuality = 5;                 // 网络质量 1-5星 (v1.1实现)
     private long stateTimestamp;                    // 状态变更时间戳
-    private SurfaceViewRenderer videoRenderer;     // 视频渲染器 (资源池管理)
+    private TextureViewRenderer videoRenderer;     // 视频渲染器 (资源池管理)
     private long joinTime;                          // 加入通话时间
     private long totalDuration;                     // 总通话时长
 
@@ -176,6 +176,11 @@ public class GroupCallMember {
         return userId;
     }
 
+    // 别名方法，兼容性
+    public String getUserID() {
+        return userId;
+    }
+
     public String getNickname() {
         return nickname != null ? nickname : userId;
     }
@@ -185,6 +190,11 @@ public class GroupCallMember {
     }
 
     public String getAvatar() {
+        return avatar;
+    }
+
+    // 别名方法，兼容性
+    public String getFaceURL() {
         return avatar;
     }
 
@@ -208,6 +218,11 @@ public class GroupCallMember {
         return isMicEnabled;
     }
 
+    // 别名方法，兼容性
+    public boolean isMicrophoneEnabled() {
+        return isMicEnabled;
+    }
+
     public void setMicEnabled(boolean micEnabled) {
         isMicEnabled = micEnabled;
     }
@@ -228,11 +243,11 @@ public class GroupCallMember {
         return stateTimestamp;
     }
 
-    public SurfaceViewRenderer getVideoRenderer() {
+    public TextureViewRenderer getVideoRenderer() {
         return videoRenderer;
     }
 
-    public void setVideoRenderer(SurfaceViewRenderer videoRenderer) {
+    public void setVideoRenderer(TextureViewRenderer videoRenderer) {
         this.videoRenderer = videoRenderer;
     }
 
