@@ -508,12 +508,19 @@ callingService.call(groupSignalingInfo);  // 这会显示单人通话界面！
 
 #### ✅ 修复方案
 ```java
-// ✅ 正确实现：调用CallingVM.initiateGroupCall()显示九宫格界面
-CallingVM callingVM = Easy.find(CallingVM.class);
-if (callingVM != null) {
-    callingVM.initiateGroupCall(groupID, memberIds, isVideoCall);  // 显示九宫格界面！
-}
+// ✅ 正确实现：使用buildGroupSignalingInfo构建群组信令
+SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideoCall, groupID, memberIds);
+callingService.call(groupSignalingInfo);  // CallDialog会根据SessionType识别并显示九宫格！
 ```
+
+#### 🏢 架构合规修复
+初始尝试直接调用CallingVM.initiateGroupCall()，但遇到模块依赖错误：
+```
+error: package io.openim.android.ouicalling.vm does not exist
+```
+这是因为OUIConversation模块不能直接依赖OUICalling模块。
+
+正确的架构方式是通过CallingService接口进行跨模块通信。当`buildGroupSignalingInfo()`构建的SignalingInfo中的SessionType为`ConversationType.GROUP_CHAT`时，CallDialog的`bindData()`方法会自动识别并切换到群组模式。
 
 #### 📊 架构验证
 经过代码分析，确认完整的群组通话功能已经实现：
