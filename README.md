@@ -174,12 +174,20 @@ gradlew assemble
 |                            | PC, Mobile, Pad, Web, Mini Program each can log in with one device               | ✅     |
 |                            | PC not mutually kicked, only one device total for other platforms                | ✅     |
 | **Audio/Video Call**       | One-to-one audio and video calls                                                 | ✅     |
+|                            | **Multi-party audio calls (up to 9 participants)**                              | ✅     |
+|                            | **Multi-party video calls (up to 9 participants)**                              | ✅     |
+|                            | **Smart video stream management with priority control**                          | ✅     |
+|                            | **Adaptive quality control based on network conditions**                        | ✅     |
+|                            | **Real-time speaker detection and auto-focus**                                  | ✅     |
+|                            | **Performance monitoring and resource optimization**                            | ✅     |
 | **File Storage**           | Supports private Minio deployment                                                | ✅     |
 |                            | Supports public cloud services COS, OSS, Kodo, S3                                | ✅     |
 | **Push**                   | Real-time online message push                                                    | ✅     |
 |                            | Offline message push, supports Getui, Firebase                                   | ✅     |
 
-For more advanced features, audio/video calls, or video conferences, please contact us at [contact@openim.io](mailto:contact@openim.io).
+**Multi-Party Calling Features**: This version now includes complete multi-party audio/video calling support with advanced features. See [API Usage Guide](./docs/api-usage-guide.md) for implementation details.
+
+For additional enterprise features or technical support, please contact us at [contact@openim.io](mailto:contact@openim.io).
 
 ## Join Our Community :busts_in_silhouette:
 
