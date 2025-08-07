@@ -14,7 +14,7 @@ import io.openim.android.ouicalling.adapter.VideoStreamItem
 import io.openim.android.ouicalling.manager.StreamPriority
 import io.openim.android.ouicalling.utils.VideoStreamMonitor
 import io.openim.android.ouicalling.vm.CallViewModel
-import kotlinx.coroutines.flow.collect
+
 import kotlinx.coroutines.launch
 
 /**
@@ -78,20 +78,9 @@ class MultiStreamDemoActivity : AppCompatActivity() {
     }
     
     private fun initViews() {
-        // 创建RecyclerView（如果layout中没有的话）
-        val foundRecyclerView = findViewById<RecyclerView?>(R.id.recyclerView)
-        if (foundRecyclerView != null) {
-            recyclerView = foundRecyclerView
-        } else {
-            recyclerView = RecyclerView(this).apply {
-                layoutParams = android.view.ViewGroup.LayoutParams(
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-                    android.view.ViewGroup.LayoutParams.MATCH_PARENT
-                )
-            }
-            // 如果没有找到RecyclerView，设置为内容视图
-            setContentView(recyclerView)
-        }
+        // 直接获取布局中的RecyclerView
+        recyclerView = findViewById<RecyclerView>(R.id.recyclerView)
+            ?: throw IllegalStateException("RecyclerView not found in layout")
     }
     
     private fun setupAdapter() {

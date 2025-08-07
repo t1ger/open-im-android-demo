@@ -34,6 +34,9 @@ import io.openim.android.ouicalling.adapter.GroupMemberAdapter;
 import io.openim.android.ouicalling.databinding.DialogCallBinding;
 import io.openim.android.ouicalling.databinding.LayoutFloatViewBinding;
 import io.openim.android.ouicalling.entity.GroupCallMember;
+import io.openim.android.ouicalling.entity.StreamStatistics;
+import io.openim.android.ouicalling.entity.PerformanceSummary;
+import io.openim.android.ouicalling.utils.VideoResourcePool;
 import io.openim.android.ouicalling.helper.GroupCallViewHelper;
 import io.openim.android.ouicalling.vm.CallingVM;
 import io.openim.android.ouicore.base.BaseApp;
@@ -610,7 +613,7 @@ public class CallDialog extends BaseDialog {
             // 单人模式：使用原有逻辑
             callingVM.callViewModel.subscribe(callingVM.callViewModel.getRemoteParticipants(), (v) -> {
                 if (isSubscribe || view == null) return null;
-                Object[] toArray = v.values().toArray();
+                Object[] toArray = v.toArray();
                 if (toArray.length == 0) return null;
                 callingVM.callViewModel.subscribe(((RemoteParticipant) toArray[0]).getEvents().getEvents(), (event) -> {
                     isSubscribe = true;
@@ -976,7 +979,7 @@ public class CallDialog extends BaseDialog {
                 groupMemberAdapter.releaseAllVideoRenderers();
             }
             // 释放VideoResourcePool中的资源
-            VideoResourcePool resourcePool = callingVM.getResourcePool();
+            VideoResourcePool resourcePool = callingVM.getVideoResourcePool();
             if (resourcePool != null) {
                 resourcePool.clear();
             }

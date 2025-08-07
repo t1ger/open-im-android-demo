@@ -16,12 +16,15 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import com.github.ajalt.timberkt.Timber
 
+
 // Manager导入
 import io.openim.android.ouicalling.manager.*
 
 // 群组通话相关导入
 import io.openim.android.ouicalling.entity.CallMemberState
 import io.openim.android.ouicalling.entity.GroupCallMember
+import io.openim.android.ouicalling.entity.StreamStatistics
+import io.openim.android.ouicalling.entity.PerformanceSummary
 
 // 性能监控导入
 import io.openim.android.ouicalling.utils.VideoStreamMonitor
@@ -279,27 +282,7 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     fun setAdaptiveQualityEnabled(enabled: Boolean) =
         multiStreamManager.setAdaptiveQualityEnabled(enabled)
     
-    /**
-     * 获取流统计信息
-     */
-    fun getStreamStatistics(): StreamStatistics =
-        multiStreamManager.getStreamStatistics()
-    
-    /**
-     * 开始性能监控
-     */
-    fun startPerformanceMonitoring() = 
-        streamMonitor.startMonitoring(viewModelScope)
-    
-    /**
-     * 停止性能监控
-     */
-    fun stopPerformanceMonitoring() = streamMonitor.stopMonitoring()
-    
-    /**
-     * 获取性能摘要
-     */
-    fun getPerformanceSummary() = streamMonitor.getPerformanceSummary()
+    // 这些方法在文件后面有完整实现，此处删除重复定义
     
     /**
      * 获取LiveKit Room实例（兼容现有CallingVM调用）
@@ -401,10 +384,15 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     /**
-     * 获取远程参与者列表
+     * 获取远程参与者列表 - 信令驱动模式
+     * 注意：根据架构原则，不直接暴露LiveKit的RemoteParticipant类型
+     * 而是返回业务层的Participant列表，由CallingVM通过信令更新
      */
-    fun getRemoteParticipants(): StateFlow<List<RemoteParticipant>> {
-        return roomManager.room.remoteParticipants.flow.stateIn(
+    fun getRemoteParticipants(): StateFlow<List<Participant>> {
+        // 使用SpeakerManager中的所有参与者，过滤出远程参与者
+        return speakerManager.allParticipants.map { participants ->
+            participants.filterIsInstance<RemoteParticipant>()
+        }.stateIn(
             viewModelScope,
             SharingStarted.WhileSubscribed(),
             emptyList()
@@ -473,6 +461,71 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     override fun onCleared() {
         super.onCleared()
         release()
+    }
+    
+    // ===== 性能监控方法 (Week 2 Day 6) =====
+    
+    /**
+     * 获取视频流统计信息
+     */
+    fun getStreamStatistics(): StreamStatistics {
+        return try {
+            // 将MultiStreamManager的StreamStatistics转换为entity包下的StreamStatistics
+            val managerStats = multiStreamManager.getStreamStatistics()
+            StreamStatistics(
+                totalStreams = managerStats.totalStreams,
+                activeStreams = managerStats.activeStreams,
+                highPriorityStreams = managerStats.highPriorityStreams,
+                mediumPriorityStreams = managerStats.mediumPriorityStreams,
+                lowPriorityStreams = managerStats.lowPriorityStreams
+            )
+        } catch (e: Exception) {
+            Timber.w(e) { "[CallViewModel] Failed to get stream statistics" }
+            StreamStatistics()
+        }
+    }
+    
+    /**
+     * 获取性能总结报告
+     */
+    fun getPerformanceSummary(): PerformanceSummary {
+        return try {
+            // 将VideoStreamMonitor的PerformanceSummary转换为entity包下的PerformanceSummary
+            val monitorSummary = streamMonitor.getPerformanceSummary()
+            PerformanceSummary(
+                monitoringDurationMs = monitorSummary.monitoringDurationMs,
+                totalFramesRendered = monitorSummary.totalFramesRendered,
+                totalQualitySwitches = monitorSummary.totalQualitySwitches.toInt(),
+                totalPrioritySwitches = monitorSummary.totalPrioritySwitches.toInt()
+            )
+        } catch (e: Exception) {
+            Timber.w(e) { "[CallViewModel] Failed to get performance summary" }
+            PerformanceSummary()
+        }
+    }
+    
+    /**
+     * 开始性能监控
+     */
+    fun startPerformanceMonitoring() {
+        try {
+            streamMonitor.startMonitoring(viewModelScope)
+            Timber.d { "[CallViewModel] Performance monitoring started" }
+        } catch (e: Exception) {
+            Timber.e(e) { "[CallViewModel] Failed to start performance monitoring" }
+        }
+    }
+    
+    /**
+     * 停止性能监控
+     */
+    fun stopPerformanceMonitoring() {
+        try {
+            streamMonitor.stopMonitoring()
+            Timber.d { "[CallViewModel] Performance monitoring stopped" }
+        } catch (e: Exception) {
+            Timber.e(e) { "[CallViewModel] Failed to stop performance monitoring" }
+        }
     }
     
     // ===== 事件处理封装 =====

@@ -3,6 +3,7 @@ package io.openim.android.ouicalling.manager
 import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
 import io.livekit.android.room.participant.Participant
+import io.livekit.android.room.participant.RemoteParticipant
 import io.livekit.android.room.track.*
 import io.livekit.android.room.track.video.ViewVisibility
 import io.livekit.android.util.flow
@@ -199,13 +200,8 @@ class VideoBindingManager(
                 if (it.track != null) return it 
             }
             
-            // 最后尝试获取任意视频轨道
-            if (participant is RemoteParticipant) {
-                // 使用封装的查询方式，而不直接访问.values
-                getFirstAvailableVideoTrack(participant)
-            } else {
-                null
-            }
+            // 最后尝试获取任意视频轨道 - 使用通用方法而非类型检查
+            getFirstAvailableVideoTrackGeneric(participant)
         } catch (e: Exception) {
             Timber.w(e) { "[VideoBindingManager] 获取最优视频轨道失败: ${participant.identity?.value}" }
             null
@@ -213,13 +209,13 @@ class VideoBindingManager(
     }
     
     /**
-     * 安全获取第一个可用的视频轨道(避免直接API访问)
-     * @param participant 远程参与者
+     * 通用获取第一个可用的视频轨道(信令驱动模式)
+     * @param participant 参与者(不区分本地/远程)
      * @return 第一个可用的视频轨道或null
      */
-    private fun getFirstAvailableVideoTrack(participant: RemoteParticipant): TrackPublication? {
+    private fun getFirstAvailableVideoTrackGeneric(participant: Participant): TrackPublication? {
         return try {
-            // ✅ 安全方式: 使用迭代器而不直接访问.values
+            // ✅ 信令驱动模式: 使用通用的Participant接口
             for (source in Track.Source.values()) {
                 participant.getTrackPublication(source)?.let { publication ->
                     if (publication.track is VideoTrack) {

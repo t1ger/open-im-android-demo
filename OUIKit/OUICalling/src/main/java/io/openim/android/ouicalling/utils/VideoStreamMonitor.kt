@@ -3,7 +3,7 @@ package io.openim.android.ouicalling.utils
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import com.github.ajalt.timberkt.Timber
-import io.openim.android.ouicalling.manager.StreamStatistics
+import io.openim.android.ouicalling.entity.StreamStatistics
 import io.openim.android.ouicalling.vm.CallViewModel
 import java.util.concurrent.atomic.AtomicLong
 

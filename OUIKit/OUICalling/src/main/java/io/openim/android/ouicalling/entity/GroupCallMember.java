@@ -227,6 +227,15 @@ public class GroupCallMember {
         isMicEnabled = micEnabled;
     }
 
+    // 兼容方法，供CallingVM调用
+    public void setMicrophoneOn(boolean microphoneOn) {
+        setMicEnabled(microphoneOn);
+    }
+
+    public void setCameraOn(boolean cameraOn) {
+        setCameraEnabled(cameraOn);
+    }
+
     public boolean isSpeaking() {
         return isSpeaking;
     }

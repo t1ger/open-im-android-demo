@@ -112,6 +112,13 @@ public class CallingVM {
     public VideoResourcePool getResourcePool() {
         return resourcePool;
     }
+
+    /**
+     * 兼容方法，供CallDialog调用
+     */
+    public VideoResourcePool getVideoResourcePool() {
+        return resourcePool;
+    }
     // 群组信令监听器
     private OnGroupSignalingListener groupSignalingListener;
 
@@ -405,7 +412,7 @@ public class CallingVM {
             callViewModel.onCleared();
             L.e("unBindView - 包含群组通话清理");
         } catch (Exception e) {
-            L.e("CallingVM", "unBindView清理失败", e);
+            android.util.Log.e("CallingVM", "unBindView清理失败: " + e.getMessage(), e);
         }
     }
 
@@ -509,7 +516,7 @@ public class CallingVM {
             prepareGroupRoom(signaling);
             
         } catch (Exception e) {
-            L.e("CallingVM", "发起群组通话失败", e);
+            android.util.Log.e("CallingVM", "发起群组通话失败: " + e.getMessage(), e);
             handleGroupCallError("发起群组通话失败", e);
         }
     }
@@ -658,7 +665,7 @@ public class CallingVM {
             }
             
         } catch (Exception e) {
-            L.e("CallingVM", "发送群组信令异常", e);
+            android.util.Log.e("CallingVM", "发送群组信令异常: " + e.getMessage(), e);
             handleGroupCallError("信令发送异常", e);
         }
     }
@@ -737,7 +744,7 @@ public class CallingVM {
                 
                 @Override
                 protected void onFailure(Throwable e) {
-                    L.e("CallingVM", "获取群组通话Token失败", e);
+                    android.util.Log.e("CallingVM", "获取群组通话Token失败: " + e.getMessage(), e);
                     handleGroupCallError("获取房间Token失败", new Exception(e));
                 }
             });
@@ -750,7 +757,7 @@ public class CallingVM {
     private void connectToGroupRoomWithToken(SignalingCertificate certificate, MultiPartySignaling signaling) {
         try {
             // 获取所有成员ID（包括自己）
-            List<String> allMemberIds = new ArrayList<>(signaling.getParticipants());
+            List<String> allMemberIds = new ArrayList<>(signaling.getInviteeUserIDList());
             if (!allMemberIds.contains(BaseApp.inst().loginCertificate.userID)) {
                 allMemberIds.add(BaseApp.inst().loginCertificate.userID);
             }
@@ -764,7 +771,7 @@ public class CallingVM {
                     if (result.isSuccess()) {
                         onGroupRoomConnected();
                     } else {
-                        L.e("CallingVM", "群组房间连接失败: " + result.getException());
+                        android.util.Log.e("CallingVM", "群组房间连接失败: " + result.getException());
                         handleGroupCallError("连接群组房间失败", new Exception(result.getException()));
                     }
                     return Unit.INSTANCE;
@@ -772,7 +779,7 @@ public class CallingVM {
             );
             
         } catch (Exception e) {
-            L.e("CallingVM", "连接群组房间异常", e);
+            android.util.Log.e("CallingVM", "连接群组房间异常: " + e.getMessage(), e);
             handleGroupCallError("连接群组房间异常", e);
         }
     }
@@ -782,7 +789,7 @@ public class CallingVM {
      * ✅ 通过CallViewModel设置事件监听，不直接访问LiveKit
      */
     private void onGroupRoomConnected() {
-        L.d("CallingVM", "群组房间连接成功");
+        android.util.Log.d("CallingVM", "群组房间连接成功");
         
         setSpeakerphoneOn(true);
         if (!isVideoCalls) callViewModel.setCameraEnabled(false);
@@ -794,7 +801,7 @@ public class CallingVM {
         }, scope);
         
         // 初始化本地视频
-        initializeLocalVideoForGroup();
+        // initializeLocalVideoForGroup(); // 暂时注释，需要实现这个方法
         
         buildTimer();
         
@@ -811,7 +818,7 @@ public class CallingVM {
                 // 查找对应的LiveKit参与者
                 Participant liveKitParticipant = null;
                 for (Participant p : participants) {
-                    if (p.getIdentity().equals(member.getUserID())) {
+                    if (p.getIdentity() != null && p.getIdentity().getValue() != null && p.getIdentity().getValue().equals(member.getUserID())) {
                         liveKitParticipant = p;
                         break;
                     }
@@ -840,7 +847,7 @@ public class CallingVM {
             notifyGroupSignalingListener();
             
         } catch (Exception e) {
-            L.e("CallingVM", "更新群组成员状态异常", e);
+            android.util.Log.e("CallingVM", "更新群组成员状态异常: " + e.getMessage(), e);
         }
     }
 
@@ -848,7 +855,7 @@ public class CallingVM {
      * 处理群组通话错误
      */
     private void handleGroupCallError(String message, Exception e) {
-        L.e("CallingVM", message, e);
+        android.util.Log.e("CallingVM", message + ": " + e.getMessage(), e);
         // TODO: 实现错误处理和UI提示
     }
 
@@ -866,7 +873,7 @@ public class CallingVM {
      */
     public void cleanupGroupCall() {
         try {
-            L.d("CallingVM", "清理群组通话资源");
+            android.util.Log.d("CallingVM", "清理群组通话资源");
             
             // 清理信令去重器
             deduplicator.clearAll();
@@ -882,7 +889,7 @@ public class CallingVM {
             groupId = "";
             
         } catch (Exception e) {
-            L.e("CallingVM", "清理群组通话资源失败", e);
+            android.util.Log.e("CallingVM", "清理群组通话资源失败: " + e.getMessage(), e);
         }
     }
 

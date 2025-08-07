@@ -56,6 +56,13 @@ class SpeakerManager(
         }
     }
     
+    // ===== 对外接口 =====
+    
+    /**
+     * 获取活跃扬声器Flow
+     */
+    fun getActiveSpeakersFlow(): StateFlow<List<Participant>> = activeSpeakers
+    
     // ===== 信令驱动的状态更新接口 =====
     
     /**
