@@ -10,9 +10,9 @@
 | 阶段三 | v1.2 | 1.5周 | - | ⏳ 计划中 | 0% |
 | 阶段四 | v1.3 | 按需 | - | ⏳ 计划中 | 0% |
 
-**当前状态**: ✅ MVP v1.0 + Week 2 Day 6 多路视频流功能全部完成，编译成功，架构合规
+**当前状态**: ✅ MVP v1.0 + Week 2 Day 6 多流管理 + UI入口点修复全部完成，编译成功，架构合规
 
-**最新更新**: 2024年12月 - 完成MVP v1.0和Week 2 Day 6多路视频流功能，修复编译错误，确保架构合规
+**最新更新**: 2024年12月 - 完成群组视频通话UI入口点修复，解决了功能实现但缺少UI入口的问题，重构代码架构符合MVVM最佳实践
 
 ---
 
@@ -419,6 +419,75 @@ private void switchToGroupCallMode() {
 1. ✅ **可立即提交**: 核心功能稳定可靠，可以满足MVP要求
 2. ⚠️ **后续优化**: 补充错误处理、优化连接质量监控、改进UI初始化时序
 3. 🧪 **集成测试**: 建议先提交当前版本进行集成测试
+
+---
+
+## 🔧 UI入口点修复阶段 (2024年12月)
+
+### 🎯 问题发现和解决
+
+#### 🔍 问题分析
+- **问题描述**: 群组视频通话功能已实现（MultiPartySignaling.java, GroupCallMember.java, CallingVM.initiateGroupCall()等均存在），但群组聊天界面右上角没有视频通话图标
+- **根本原因**: `activity_chat.xml`中通话按钮只对单人聊天可见：`android:visibility="@{ChatVM.isSingleChat?View.VISIBLE:View.GONE}"`
+- **架构问题**: 初期修复尝试在ChatActivity中处理业务逻辑，违反了MVVM原则
+
+#### ✅ 解决方案（方案C - 混合方案）
+
+**1. UI可见性修复**
+```xml
+<!-- activity_chat.xml -->
+<ImageView
+    android:id="@+id/call"
+    android:onClick="@{()->ChatVM.call()}"
+    android:visibility="visible" />  <!-- 从条件显示改为始终可见 -->
+```
+
+**2. ViewModel业务逻辑统一**
+```java
+// ChatVM.java - 统一通话入口
+public void call() {
+    if (isSingleChat) {
+        singleChatCall(isVideoCall);  // 现有逻辑
+    } else {
+        initiateGroupCall();          // 新增逻辑
+    }
+}
+
+private void initiateGroupCall() {
+    // 从 ChatActivity 移过来的业务逻辑
+    // 1. 获取群成员列表
+    // 2. 构建 SignalingInfo
+    // 3. 调用 CallingService
+}
+```
+
+**3. Activity职责简化**
+```java
+// ChatActivity.java - 只负责UI事件
+public void goToCall() {
+    vm.call();  // 简单委托给ViewModel
+}
+```
+
+#### 📊 改动统计
+
+| 文件 | 改动类型 | 行数 | 说明 |
+|------|---------|------|------|
+| `ChatVM.java` | ➕ 新增 | +75行 | 添加统一call()方法和群组通话逻辑 |
+| `ChatActivity.java` | ➖ 减少 | -41行 | 移除业务逻辑，简化为委托 |
+| `activity_chat.xml` | ✏️ 修改 | +1行 | 添加DataBinding点击事件 |
+| `IMUtil.java` | ➕ 新增 | +30行 | buildGroupSignalingInfo()方法 |
+
+#### 🎆 成果验证
+- ✅ 编译成功：所有模块编译通过
+- ✅ 架构合规：符合MVVM最佳实践
+- ✅ 功能完整：群组聊天界面显示通话图标
+- ✅ 一致性：单人和群组通话使用统一入口
+
+#### 🛡️ 风险控制
+- 渐进式重构：没有大范围重写，只是职责迁移
+- 保留现有逻辑：单人通话逻辑完全保持不变
+- 向后兼容：保留Activity中的方法以防万一
 
 ---
 

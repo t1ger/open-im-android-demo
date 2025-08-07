@@ -946,6 +946,81 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
         callingService.call(signalingInfo);
     }
 
+    /**
+     * 统一的通话入口 - 与XML中的DataBinding对应
+     * 根据是否为单聊自动选择单人或群组通话
+     */
+    public void call() {
+        // 显示通话类型选择菜单（音频/视频）
+        IMUtil.showBottomCallsPopMenu(getContext(), (v1, keyCode, event) -> {
+            isVideoCall = keyCode != 1;  // keyCode 1=音频, 其他=视频
+            
+            if (isSingleChat) {
+                // 单人通话：使用现有逻辑
+                singleChatCall(isVideoCall);
+            } else {
+                // 群组通话：新增逻辑
+                initiateGroupCall();
+            }
+            return false;
+        });
+    }
+
+    /**
+     * 发起群组通话
+     * 从 ChatActivity 中移过来的业务逻辑
+     */
+    private void initiateGroupCall() {
+        if (null == callingService || TextUtils.isEmpty(groupID)) {
+            getIView().toast("通话服务不可用");
+            return;
+        }
+
+        // 获取群组信息
+        getGroupsInfo(groupID, groupInfoList -> {
+            if (groupInfoList == null || groupInfoList.isEmpty()) {
+                getIView().toast("获取群组信息失败");
+                return;
+            }
+
+            // 获取群成员列表
+            OpenIMClient.getInstance().groupManager.getGroupMemberList(new OnBase<List<GroupMembersInfo>>() {
+                @Override
+                public void onError(int code, String error) {
+                    getIView().toast("获取群组成员失败: " + error);
+                }
+
+                @Override
+                public void onSuccess(List<GroupMembersInfo> groupMembersInfos) {
+                    try {
+                        // 构建群成员ID列表（排除自己）
+                        List<String> memberIds = new ArrayList<>();
+                        String currentUserId = BaseApp.inst().loginCertificate.userID;
+                        
+                        for (GroupMembersInfo member : groupMembersInfos) {
+                            if (!member.getUserID().equals(currentUserId)) {
+                                memberIds.add(member.getUserID());
+                            }
+                        }
+                        
+                        if (memberIds.isEmpty()) {
+                            getIView().toast("群组中没有其他成员");
+                            return;
+                        }
+                        
+                        // 构建群组通话参数并发起通话
+                        SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideoCall, groupID, memberIds);
+                        callingService.call(groupSignalingInfo);
+                        
+                    } catch (Exception e) {
+                        getIView().toast("发起群组通话失败: " + e.getMessage());
+                        Log.e(TAG, "Group call failed", e);
+                    }
+                }
+            }, groupID, 0, 0, 100);
+        });
+    }
+
     public void toast(String tips) {
         if (getIView() != null)
             getIView().toast(tips);

@@ -391,6 +391,36 @@ public class IMUtil {
         return signalingInfo;
     }
 
+    /**
+     * 构建群组通话的SignalingInfo
+     *
+     * @param isVideoCalls   if true, called by video.
+     * @param groupId        群组ID
+     * @param inviteeUserIDs invited user
+     * @return calling parameter
+     */
+    public static SignalingInfo buildGroupSignalingInfo(boolean isVideoCalls, String groupId, List<String> inviteeUserIDs) {
+        SignalingInfo signalingInfo = new SignalingInfo();
+        String inId = BaseApp.inst().loginCertificate.userID;
+        signalingInfo.setOpUserID(inId);
+        SignalingInvitationInfo signalingInvitationInfo = new SignalingInvitationInfo();
+        signalingInvitationInfo.setInviterUserID(inId);
+        signalingInvitationInfo.setInviteeUserIDList(inviteeUserIDs);
+        signalingInvitationInfo.setRoomID(UUID.randomUUID().toString().replaceAll("​", ""));
+        signalingInvitationInfo.setTimeout(30);
+        signalingInvitationInfo.setInitiateTime(System.currentTimeMillis());
+        signalingInvitationInfo.setMediaType(isVideoCalls ? Constants.MediaType.VIDEO :
+            Constants.MediaType.AUDIO);
+        signalingInvitationInfo.setPlatformID(IMUtil.PLATFORM_ID);
+        // ✅ 关键区别：群组通话使用 GROUP_CHAT 类型
+        signalingInvitationInfo.setSessionType(ConversationType.GROUP_CHAT);
+        // 设置群组ID
+        signalingInvitationInfo.setGroupID(groupId);
+        signalingInfo.setInvitation(signalingInvitationInfo);
+        signalingInfo.setOfflinePushInfo(new OfflinePushInfo());
+        return signalingInfo;
+    }
+
     public static void showBottomCallsPopMenu(Context context, View.OnKeyListener v) {
         HasPermissions hasPermissions = new HasPermissions(context, Permission.CAMERA,
             Permission.RECORD_AUDIO);

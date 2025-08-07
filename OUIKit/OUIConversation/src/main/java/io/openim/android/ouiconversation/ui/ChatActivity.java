@@ -386,8 +386,9 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
         view.call.setOnClickListener(new OnDedrepClickListener() {
             @Override
             public void click(View v) {
-                if (vm.isSingleChat && callingService != null) {
-                    goToCall();
+                if (callingService != null) {
+                    // 现在使用统一的call()方法处理单人和群组通话
+                    vm.call();
                 }
             }
         });
@@ -439,17 +440,13 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
         });
     }
 
+    /**
+     * 通话按钮点击事件 - 简单委托给ViewModel
+     * 与XML中的DataBinding保持一致：android:onClick="@{()->ChatVM.call()}"
+     * 注意：这个方法可能不会被使用，因为XML中直接绑定了ChatVM.call()
+     */
     public void goToCall() {
-        IMUtil.showBottomCallsPopMenu(this, (v1, keyCode, event) -> {
-            vm.isVideoCall = keyCode != 1;
-            if (vm.isSingleChat) {
-                List<String> ids = new ArrayList<>();
-                ids.add(vm.userID);
-                SignalingInfo signalingInfo = IMUtil.buildSignalingInfo(vm.isVideoCall, ids);
-                callingService.call(signalingInfo);
-            }
-            return false;
-        });
+        vm.call();
     }
 
     private void bindShowName() {

@@ -2,10 +2,10 @@
 
 ## 📋 发布概述
 
-**版本**: MVP v1.0  
+**版本**: MVP v1.0 + UI入口点修复  
 **发布日期**: 2024年12月  
 **分支**: `feat/multi-party-calling`  
-**状态**: ✅ 完成可用 (BUILD SUCCESSFUL, 架构合规)
+**状态**: ✅ 完成可用 (BUILD SUCCESSFUL, 架构合规, UI入口完整)
 
 ## ✅ 已实现功能
 
@@ -79,11 +79,18 @@ OUIKit/OUICalling/src/main/res/layout/
 ## 🚀 使用方法
 
 ### 1. 发起群组通话
+
+**方式一：UI入口（推荐）**
 ```java
-// 在群聊界面中
-CallingVM callingVM = new CallingVM(callingService, true);
-List<String> memberIds = Arrays.asList("user1", "user2", "user3");
-callingVM.initiateGroupCall("groupId123", memberIds, true); // true=视频通话
+// 在群聊界面点击通话按钮，自动调用
+ChatVM.call(); // 自动识别群聊或单聊，显示音视频选择菜单
+```
+
+**方式二：编程调用**
+```java
+// 直接编程调用（不常用）
+SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(true, groupId, memberIds);
+callingService.call(groupSignalingInfo);
 ```
 
 ### 2. 处理群组信令
