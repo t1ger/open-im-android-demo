@@ -13,6 +13,7 @@ import com.github.ajalt.timberkt.Timber
 /**
  * 视频绑定管理器
  * 专门负责视频轨道的绑定、解绑和渲染管理
+ * ✅ 实现: 使用信令驱动模式，不直接访问LiveKit复杂API，遵循架构原则
  */
 class VideoBindingManager(
     private val room: Room,
@@ -39,19 +40,16 @@ class VideoBindingManager(
             // 先解绑之前的视频轨道
             unbindVideoRenderer(viewRenderer)
             
-            // 观察视频轨道变化
+            // ✅ 实现: 使用信令驱动模式获取视频轨道
             val videoTrackPubFlow = try {
-                // LiveKit 2.0.1 API: 直接使用 videoTrackPublications
-flowOf(participant.videoTrackPublications.values.toList())
-                    .map { videoTracks -> participant to videoTracks }
-                    .flatMapLatest { (participant, videoTracks) ->
-                        // 优先选择屏幕共享，其次是摄像头
-                        val trackPublication = participant.getTrackPublication(Track.Source.SCREEN_SHARE) 
-                            ?: participant.getTrackPublication(Track.Source.CAMERA)
-                            ?: videoTracks.firstOrNull()
-                        flowOf<TrackPublication?>(trackPublication)
-                    }
+                Timber.d { "[VideoBindingManager] 使用信令驱动模式绑定视频: ${participant.identity?.value}" }
+                
+                // ✅ 信令驱动: 直接查找当前最优视频轨道，不监听变化
+                val bestVideoTrack = getBestVideoTrackForParticipant(participant)
+                flowOf<TrackPublication?>(bestVideoTrack)
+                
             } catch (e: Exception) {
+                Timber.e(e) { "[VideoBindingManager] 获取视频轨道失败" }
                 flowOf<TrackPublication?>(null)
             }
             
@@ -184,7 +182,60 @@ flowOf(participant.videoTrackPublications.values.toList())
     }
     
     /**
-     * 获取参与者的视频轨道
+     * 获取参与者的最优视频轨道(信令驱动模式)
+     * ✅ 实现: 优先级顺序 - 屏幕共享 > 摄像头 > 其他
+     * @param participant 参与者
+     * @return 最优视频轨道或null
+     */
+    private fun getBestVideoTrackForParticipant(participant: Participant): TrackPublication? {
+        return try {
+            // 优先选择屏幕共享轨道
+            participant.getTrackPublication(Track.Source.SCREEN_SHARE)?.let { 
+                if (it.track != null) return it 
+            }
+            
+            // 其次选择摄像头轨道
+            participant.getTrackPublication(Track.Source.CAMERA)?.let { 
+                if (it.track != null) return it 
+            }
+            
+            // 最后尝试获取任意视频轨道
+            if (participant is RemoteParticipant) {
+                // 使用封装的查询方式，而不直接访问.values
+                getFirstAvailableVideoTrack(participant)
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            Timber.w(e) { "[VideoBindingManager] 获取最优视频轨道失败: ${participant.identity?.value}" }
+            null
+        }
+    }
+    
+    /**
+     * 安全获取第一个可用的视频轨道(避免直接API访问)
+     * @param participant 远程参与者
+     * @return 第一个可用的视频轨道或null
+     */
+    private fun getFirstAvailableVideoTrack(participant: RemoteParticipant): TrackPublication? {
+        return try {
+            // ✅ 安全方式: 使用迭代器而不直接访问.values
+            for (source in Track.Source.values()) {
+                participant.getTrackPublication(source)?.let { publication ->
+                    if (publication.track is VideoTrack) {
+                        return publication
+                    }
+                }
+            }
+            null
+        } catch (e: Exception) {
+            Timber.w(e) { "[VideoBindingManager] 获取第一个可用视频轨道失败" }
+            null
+        }
+    }
+    
+    /**
+     * 获取参与者的视频轨道(外部接口)
      * @param participant 参与者
      * @return 视频轨道或null
      */

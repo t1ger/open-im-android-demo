@@ -11,6 +11,22 @@ import kotlinx.coroutines.flow.*
 import com.github.ajalt.timberkt.Timber
 
 /**
+ * 信令轨道变化事件 - 用于替代直接访问LiveKit API
+ */
+sealed class SignalingTrackChange {
+    data class TrackEnabled(
+        val userId: String,
+        val mediaType: String, // "audio" or "video"
+        val isEnabled: Boolean
+    ) : SignalingTrackChange()
+    
+    data class TrackDisabled(
+        val userId: String,
+        val mediaType: String
+    ) : SignalingTrackChange()
+}
+
+/**
  * 群组通话管理器
  * 专门负责群组通话的业务逻辑：成员管理、事件处理等
  */
@@ -141,25 +157,25 @@ class GroupCallManager(
         
         Timber.d { "[GroupCallManager] 通过信令更新轨道状态: $userId, 类型:$mediaType, 启用:$isEnabled" }
         
-        // 查找对应的轨道
-        val trackPublication = when (mediaType.lowercase()) {
-            "audio" -> participant.audioTrackPublications.values.firstOrNull()
-            "video" -> participant.videoTrackPublications.values.firstOrNull()
+        // ✅ 修复: 不直接访问轨道，改为发送信令事件
+        // 轨道的具体管理交给专门的VideoBindingManager和AudioManager
+        val signalTrackChange = when (mediaType.lowercase()) {
+            "audio" -> SignalingTrackChange.TrackEnabled(userId, "audio", isEnabled)
+            "video" -> SignalingTrackChange.TrackEnabled(userId, "video", isEnabled)
             else -> null
         }
         
-        // 如果找到轨道，更新其状态并发送事件
-        trackPublication?.let { publication ->
+        // 如果有有效的信令事件，发送轨道状态变化通知
+        signalTrackChange?.let {
             coroutineScope.launch {
-                if (isEnabled) {
-                    _groupParticipantChanges.emit(
-                        GroupParticipantChange.TrackSubscribed(userId, participant, publication)
+                _groupParticipantChanges.emit(
+                    GroupParticipantChange.TrackStateChanged(
+                        userId, 
+                        participant, 
+                        mediaType, 
+                        isEnabled
                     )
-                } else {
-                    _groupParticipantChanges.emit(
-                        GroupParticipantChange.TrackUnsubscribed(userId, participant, publication)
-                    )
-                }
+                )
             }
         }
     }
@@ -276,5 +292,12 @@ sealed class GroupParticipantChange {
         val participantId: String,
         val participant: RemoteParticipant,
         val publication: TrackPublication
+    ) : GroupParticipantChange()
+    
+    data class TrackStateChanged(
+        val participantId: String,
+        val participant: RemoteParticipant,
+        val mediaType: String,
+        val isEnabled: Boolean
     ) : GroupParticipantChange()
 }
