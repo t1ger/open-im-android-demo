@@ -283,13 +283,14 @@ public class CallDialog extends BaseDialog {
      */
     private void switchToGroupCallModeInternal() {
         L.d("CallDialog", "switchToGroupCallModeInternal() 调用，当前isGroupCall = " + isGroupCall);
-        if (isGroupCall) {
-            L.d("CallDialog", "已经是群组模式，跳过切换");
-            return; // 已经是群组模式
+        
+        // 🔥 修夏：检查是否已经切换了UI，而不是状态
+        if (groupView != null && groupViewHelper != null) {
+            L.d("CallDialog", "群组UI已经初始化，跳过切换");
+            return; // 已经切换过UI
         }
         
         L.businessFlow("CallDialog", "群组模式切换", "开始切换...");
-        isGroupCall = true;
         groupView = getLayoutInflater().inflate(R.layout.dialog_group_call, null);
         groupViewHelper = new GroupCallViewHelper(groupView);
         setContentView(groupView);
@@ -507,6 +508,10 @@ public class CallDialog extends BaseDialog {
         boolean isGroupFromState = callingVM.isGroupCall();
         L.d("CallDialog", "计算 isGroupCall = " + isGroupFromState + ", stateManager: " + callingVM.getCallTypeDescription());
         
+        // 🔥 关键修复：更新CallDialog的isGroupCall字段
+        this.isGroupCall = isGroupFromState;
+        L.critical("CallDialog", "isGroupCall字段已更新: " + this.isGroupCall);
+        
         // 检测是否为群组通话并启动延迟切换流程
         if (isGroupFromState) {
             L.businessFlow("CallDialog", "群组通话检测", "启动延迟切换流程");
@@ -655,6 +660,8 @@ public class CallDialog extends BaseDialog {
         OpenIMClient.getInstance().userInfoManager.getUsersInfo(new OnBase<List<PublicUserInfo>>() {
             @Override
             public void onError(int code, String error) {
+                LogExceptionHandler.handleException("CallDialog", "获取群组通话用户信息失败", LogExceptionHandler.ExceptionType.NETWORK_ERROR, null);
+                L.e("CallDialog", "获取群组通话用户信息失败: " + error + ", code: " + code);
                 Toast.makeText(context, error + code, Toast.LENGTH_SHORT).show();
             }
 
