@@ -402,7 +402,35 @@ public class IMUtil {
      */
     public static SignalingInfo buildGroupSignalingInfo(boolean isVideoCalls, String groupId, List<String> inviteeUserIDs) {
         SignalingInfo signalingInfo = new SignalingInfo();
+        
+        // 检查登录状态和证书有效性 - 智能初始化
+        if (BaseApp.inst().loginCertificate == null) {
+            L.d("IMUtil", "buildGroupSignalingInfo: loginCertificate为空，尝试从缓存恢复");
+            BaseApp.inst().loginCertificate = LoginCertificate.getCache(BaseApp.inst());
+            
+            if (BaseApp.inst().loginCertificate == null) {
+                LogExceptionHandler.handleException(
+                    "IMUtil",
+                    "buildGroupSignalingInfo: 用户未登录 - 缓存中也无登录信息",
+                    LogExceptionHandler.ExceptionType.AUTH_ERROR,
+                    new IllegalStateException("用户未登录或登录证书已过期")
+                );
+                return null;
+            }
+            L.d("IMUtil", "buildGroupSignalingInfo: 从缓存成功恢复loginCertificate, userID=" + BaseApp.inst().loginCertificate.userID);
+        }
+        
         String inId = BaseApp.inst().loginCertificate.userID;
+        if (inId == null || inId.isEmpty()) {
+            LogExceptionHandler.handleException(
+                "IMUtil",
+                "buildGroupSignalingInfo: 用户ID为空",
+                LogExceptionHandler.ExceptionType.DATA_ERROR,
+                new IllegalStateException("登录证书中的用户ID为空")
+            );
+            return null;
+        }
+        
         signalingInfo.setOpUserID(inId);
         SignalingInvitationInfo signalingInvitationInfo = new SignalingInvitationInfo();
         signalingInvitationInfo.setInviterUserID(inId);
