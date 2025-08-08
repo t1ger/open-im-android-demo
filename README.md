@@ -96,7 +96,12 @@ The open-source version supports one-to-one audio and video calls. You need to f
 
 > This project allows separate builds for the native android application.
 
-### 🎆 最新更新 (2024.8.7)
+### 🎆 最新更新 (2024.12.19)
+✅ **CallDialog架构重构完成**: 修复群组音视频通话重复选择屏幕的关键问题，完全分离SingleCallDialog和GroupCallDialog。  
+✅ **架构优化**: 引入CallDialogFactory设计模式和统一SignalingProcessor，消除复杂的状态切换逻辑。  
+✅ **代码质量**: 遵循单一职责原则，提升代码可维护性和扩展性。详见[架构重构文档](./docs/call-dialog-architecture-refactor.md)。
+
+### 历史更新 (2024.8.7)
 ✅ **架构修复完成**: 6个架构违规编译错误已全部修复，OUICalling模块100%符合信令驱动原则。  
 ✅ **编译状态**: 所有LiveKit直接API调用已移除，架构合规性验证通过。  
 ✅ **功能完整**: MVP v1.0 + Week 2 Day 6 多路视频流管理功能完整。

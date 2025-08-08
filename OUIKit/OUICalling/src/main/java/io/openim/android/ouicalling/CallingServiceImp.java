@@ -28,6 +28,7 @@ import io.openim.android.ouicore.utils.BackgroundStartPermissions;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.MediaPlayerUtil;
 import io.openim.android.ouicore.utils.NotificationUtil;
 import io.openim.android.ouicore.utils.Routes;
@@ -40,7 +41,7 @@ import io.openim.android.sdk.models.SignalingInfo;
 public class CallingServiceImp implements CallingService {
     private OnServicePriorLoginCallBack onServicePriorLoginCallBack;
     public static final String TAG = "CallingServiceImp";
-    public CallDialog callDialog;
+    public BaseCallDialog callDialog;
     private SignalingInfo signalingInfo;
     public static final int A_NOTIFY_ID = 100;
     public boolean isBeCalled = false;
@@ -68,7 +69,7 @@ public class CallingServiceImp implements CallingService {
     public void onInvitationCancelled(SignalingInfo s) {
         cancelNotify();
         if (null == callDialog) return;
-        callDialog.callingVM.renewalDB(callDialog.buildPrimaryKey(),
+        callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(),
             (realm, callHistory) -> callHistory.setFailedState(1));
         dismissDialog();
     }
@@ -82,7 +83,7 @@ public class CallingServiceImp implements CallingService {
     public void onInviteeAccepted(SignalingInfo s) {
         if (null == callDialog) return;
         callDialog.otherSideAccepted();
-        callDialog.callingVM.renewalDB(callDialog.buildPrimaryKey(),
+        callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(),
             (realm, callHistory) -> callHistory.setSuccess(true));
     }
 
@@ -98,7 +99,7 @@ public class CallingServiceImp implements CallingService {
     public void onInviteeRejected(SignalingInfo s) {
         L.e(TAG, "----onInviteeRejected-----");
         if (null == callDialog) return;
-        callDialog.callingVM.renewalDB(callDialog.buildPrimaryKey(), (realm, callHistory) -> {
+        callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(), (realm, callHistory) -> {
             callHistory.setSuccess(false);
             callHistory.setFailedState(2);
         });
@@ -187,34 +188,103 @@ public class CallingServiceImp implements CallingService {
                                   DialogInterface.OnDismissListener dismissListener,
                                   boolean isCallOut) {
         try {
-            if (callDialog != null) return callDialog;
-            callDialog = new CallDialog(context, this, isCallOut);
-            callDialog.bindData(signalingInfo);
-            if (!callDialog.callingVM.isCallOut) {
+            if (callDialog != null) {
+                L.d(TAG, "复用现有通话对话框");
+                return callDialog;
+            }
+            
+            // 关键修复：使用SignalingProcessor处理信令，确保状态一致性
+            SignalingProcessor.ProcessingResult processingResult = SignalingProcessor.process(signalingInfo);
+            if (!processingResult.isSuccess()) {
+                L.e(TAG, "信令处理失败: " + processingResult.getErrorMessage());
+                // 降级处理：使用原始信令创建单人对话框
+                L.w(TAG, "使用降级策略创建单人通话对话框");
+            }
+            
+            // 使用CallDialogFactory创建对应类型的对话框
+            callDialog = CallDialogFactory.create(context, this, signalingInfo, isCallOut, dismissListener);
+            
+            L.businessFlow(TAG, "通话对话框创建", 
+                "类型: " + callDialog.getClass().getSimpleName() + 
+                ", 通话类型: " + CallDialogFactory.getCallTypeDescription(signalingInfo));
+            
+            // 设置被呼状态的特殊处理
+            if (!callDialog.getCallingVM().isCallOut) {
                 callDialog.setOnDismissListener(dialog -> {
                     isBeCalled = false;
                     if (null != dismissListener) dismissListener.onDismiss(dialog);
                 });
+                
+                // 锁屏状态处理
                 if (!Common.isScreenLocked() && Common.hasSystemAlertWindow()) {
-                    callDialog.setOnShowListener(dialog -> ARouter.getInstance().build(Routes.Main.HOME).navigation());
+                    callDialog.setOnShowListener(dialog -> {
+                        ARouter.getInstance().build(Routes.Main.HOME).navigation();
+                    });
                 }
             }
-            insetDB();
+            
+            // 插入数据库记录（仅单人通话）
+            insertCallHistoryRecord();
+            
         } catch (Exception e) {
-            if (!TextUtils.isEmpty(e.getMessage())) L.e(e.getMessage());
+            LogExceptionHandler.handleException(TAG, "创建通话对话框失败", 
+                LogExceptionHandler.ExceptionType.UI_ERROR, e);
+            
+            // 异常降级：创建基础对话框
+            try {
+                callDialog = CallDialogFactory.create(context, this, signalingInfo, isCallOut);
+                L.w(TAG, "异常后降级创建对话框成功");
+            } catch (Exception fallbackException) {
+                LogExceptionHandler.handleException(TAG, "降级创建对话框也失败", 
+                    LogExceptionHandler.ExceptionType.CRITICAL_ERROR, fallbackException);
+                return null;
+            }
         }
+        
         return callDialog;
     }
 
     @Override
     public void call(SignalingInfo signalingInfo) {
-        if (isCallingTips()) return;
+        L.businessFlow(TAG, "发起通话", "开始处理通话请求");
+        
+        // 检查是否已有通话进行中
+        if (isCallingTips()) {
+            L.w(TAG, "已有通话进行中，忽略新的通话请求");
+            return;
+        }
+        
+        // 设置信令信息
         setSignalingInfo(signalingInfo);
-
-        buildCallDialog(getContext(), null, true);
-        Common.UIHandler.post(() -> {
-            callDialog.show();
-        });
+        
+        // 记录通话类型用于调试
+        String callTypeDesc = CallDialogFactory.getCallTypeDescription(signalingInfo);
+        L.businessFlow(TAG, "通话类型识别", callTypeDesc);
+        
+        try {
+            // 创建对应类型的通话对话框
+            buildCallDialog(getContext(), null, true);
+            
+            if (callDialog == null) {
+                L.e(TAG, "通话对话框创建失败");
+                return;
+            }
+            
+            // 在UI线程显示对话框
+            Common.UIHandler.post(() -> {
+                try {
+                    callDialog.show();
+                    L.businessFlow(TAG, "通话对话框显示", "成功");
+                } catch (Exception e) {
+                    LogExceptionHandler.handleException(TAG, "显示通话对话框失败", 
+                        LogExceptionHandler.ExceptionType.UI_ERROR, e);
+                }
+            });
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException(TAG, "处理通话请求失败", 
+                LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
     }
 
     public boolean isCallingTips() {
@@ -234,40 +304,69 @@ public class CallingServiceImp implements CallingService {
     @Override
     public void onHangup(SignalingInfo s) {
         L.e(TAG, "----onHangup-----");
-        if (null == callDialog || callDialog.callingVM.isGroupCall()) return; // ✅ 使用统一状态管理
-        callDialog.callingVM.renewalDB(callDialog.buildPrimaryKey(),
+        if (null == callDialog || callDialog.getCallingVM().isGroupCall()) return; // ✅ 使用统一状态管理
+        callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(),
             (realm, callHistory) -> callHistory.setDuration((int)
                 (System.currentTimeMillis() - callHistory.getDate())));
         dismissDialog();
     }
 
-    private void insetDB() {
-        if (callDialog.callingVM.isGroupCall()) return; // ✅ 使用统一状态管理
-        List<String> ids = new ArrayList<>();
-        ids.add(callDialog.callingVM.isCallOut ?
-            signalingInfo.getInvitation().getInviteeUserIDList().get(0) :
-            signalingInfo.getInvitation().getInviterUserID());
-
-        boolean isCallOut = !callDialog.callingVM.isCallOut;
-        OpenIMClient.getInstance().userInfoManager.getUsersInfo(new OnBase<List<PublicUserInfo>>() {
-            @Override
-            public void onError(int code, String error) {
+    /**
+     * 插入通话历史记录到数据库
+     * 重命名并优化原有的insetDB方法
+     */
+    private void insertCallHistoryRecord() {
+        try {
+            // 群组通话暂不记录到通话历史（业务逻辑）
+            if (callDialog.getCallingVM().isGroupCall()) {
+                L.d(TAG, "群组通话不记录到通话历史");
+                return;
             }
+            
+            List<String> ids = new ArrayList<>();
+            ids.add(callDialog.getCallingVM().isCallOut ?
+                signalingInfo.getInvitation().getInviteeUserIDList().get(0) :
+                signalingInfo.getInvitation().getInviterUserID());
 
-            @Override
-            public void onSuccess(List<PublicUserInfo> data) {
-                if (data.isEmpty() || null == callDialog) return;
-                PublicUserInfo userInfo = data.get(0);
-                BaseApp.inst().realm.executeTransactionAsync(realm -> {
-                    if (null == callDialog) return;
-                    CallHistory callHistory = new CallHistory(callDialog.buildPrimaryKey(),
-                        userInfo.getUserID(), userInfo.getNickname(), userInfo.getFaceURL(),
-                        signalingInfo.getInvitation().getMediaType(), false, 0, isCallOut,
-                        System.currentTimeMillis(), 0);
-                    realm.insert(callHistory);
-                });
-            }
-        }, ids);
+            boolean isCallOut = !callDialog.getCallingVM().isCallOut;
+            
+            OpenIMClient.getInstance().userInfoManager.getUsersInfo(new OnBase<List<PublicUserInfo>>() {
+                @Override
+                public void onError(int code, String error) {
+                    LogExceptionHandler.handleException(TAG, "获取用户信息失败", 
+                        LogExceptionHandler.ExceptionType.NETWORK_ERROR, null);
+                    L.e(TAG, "获取用户信息失败: " + error + ", code: " + code);
+                }
+
+                @Override
+                public void onSuccess(List<PublicUserInfo> data) {
+                    if (data.isEmpty() || null == callDialog) return;
+                    
+                    PublicUserInfo userInfo = data.get(0);
+                    BaseApp.inst().realm.executeTransactionAsync(realm -> {
+                        if (null == callDialog) return;
+                        
+                        try {
+                            CallHistory callHistory = new CallHistory(callDialog.buildPrimaryKey(),
+                                userInfo.getUserID(), userInfo.getNickname(), userInfo.getFaceURL(),
+                                signalingInfo.getInvitation().getMediaType(), false, 0, isCallOut,
+                                System.currentTimeMillis(), 0);
+                            realm.insert(callHistory);
+                            
+                            L.d(TAG, "通话历史记录插入成功: " + userInfo.getNickname());
+                            
+                        } catch (Exception e) {
+                            LogExceptionHandler.handleException(TAG, "插入通话历史记录失败", 
+                                LogExceptionHandler.ExceptionType.DATABASE_ERROR, e);
+                        }
+                    });
+                }
+            }, ids);
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException(TAG, "处理通话历史记录", 
+                LogExceptionHandler.ExceptionType.DATA_ERROR, e);
+        }
     }
 
 }
