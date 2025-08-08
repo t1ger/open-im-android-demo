@@ -19,6 +19,8 @@ import com.github.promeg.pinyinhelper.Pinyin;
 import java.util.ArrayList;
 import java.util.List;
 
+import android.util.Log;
+
 import io.openim.android.ouicore.adapter.RecyclerViewAdapter;
 import io.openim.android.ouicore.adapter.ViewHol;
 import io.openim.android.ouicore.base.BaseActivity;
@@ -183,9 +185,17 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                         itemViewHo.view.avatar.load(memberInfo.groupMembersInfo.getFaceURL());
                         itemViewHo.view.nickName.setText(memberInfo.groupMembersInfo.getNickname());
                     } else {
+                        // 🔥 修复空指针异常：安全获取FriendInfo
                         FriendInfo friendInfo = data.userInfo.getFriendInfo();
-                        itemViewHo.view.avatar.load(friendInfo.getFaceURL());
-                        itemViewHo.view.nickName.setText(friendInfo.getNickname());
+                        if (friendInfo != null) {
+                            itemViewHo.view.avatar.load(friendInfo.getFaceURL());
+                            itemViewHo.view.nickName.setText(friendInfo.getNickname());
+                        } else {
+                            // 如果FriendInfo为null，使用UserInfo的信息
+                            itemViewHo.view.avatar.load(data.userInfo.getFaceURL());
+                            itemViewHo.view.nickName.setText(data.userInfo.getNickname());
+                            Log.w("InitiateGroupActivity", "FriendInfo为null，使用UserInfo信息");
+                        }
                     }
                     itemViewHo.view.select.setVisibility(View.VISIBLE);
                     itemViewHo.view.select.setChecked(data.isSelect);
@@ -248,10 +258,25 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                     friendInfos.add(friendInfo);
                     continue;
                 }
-                friendInfos.add(item.userInfo.getFriendInfo());
-
-                if (item.isEnabled)
-                    vm.selectedFriendInfoV3.add(item.userInfo.getFriendInfo());
+                // 🔥 修复空指针异常：安全处理FriendInfo
+                FriendInfo friendInfo = item.userInfo.getFriendInfo();
+                if (friendInfo != null) {
+                    friendInfos.add(friendInfo);
+                    if (item.isEnabled) {
+                        vm.selectedFriendInfoV3.add(friendInfo);
+                    }
+                } else {
+                    // 如果FriendInfo为null，创建一个FriendInfo对象
+                    FriendInfo newFriendInfo = new FriendInfo();
+                    newFriendInfo.setUserID(item.userInfo.getUserID());
+                    newFriendInfo.setNickname(item.userInfo.getNickname());
+                    newFriendInfo.setFaceURL(item.userInfo.getFaceURL());
+                    friendInfos.add(newFriendInfo);
+                    if (item.isEnabled) {
+                        vm.selectedFriendInfoV3.add(newFriendInfo);
+                    }
+                    Log.w("InitiateGroupActivity", "FriendInfo为null，创建新的FriendInfo对象");
+                }
             }
         }
         vm.selectedFriendInfo.setValue(friendInfos);
@@ -320,20 +345,40 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                 if (null == v || v.isEmpty()) return;
                 List<ExUserInfo> exUserInfos = new ArrayList<>(v);
                 for (ExUserInfo exUserInfo : exUserInfos) {
+                    // 🔥 修复空指针异常：检查userInfo和getFriendInfo()是否为null
+                    if (exUserInfo == null || exUserInfo.userInfo == null) {
+                        Log.w("InitiateGroupActivity", "跳过null的ExUserInfo或UserInfo");
+                        continue;
+                    }
+                    
+                    String userId = null;
+                    // 安全获取userId：优先使用getFriendInfo()，如果为null则使用getUserID()
+                    if (exUserInfo.userInfo.getFriendInfo() != null) {
+                        userId = exUserInfo.userInfo.getFriendInfo().getUserID();
+                    } else {
+                        userId = exUserInfo.userInfo.getUserID();
+                        Log.w("InitiateGroupActivity", "FriendInfo为null，使用UserInfo.getUserID(): " + userId);
+                    }
+                    
+                    if (TextUtils.isEmpty(userId)) {
+                        Log.w("InitiateGroupActivity", "userId为空，跳过该用户");
+                        continue;
+                    }
+                    
                     ExGroupMemberInfo exGroupMemberInfo = new ExGroupMemberInfo();
                     exGroupMemberInfo.groupMembersInfo = new GroupMembersInfo();
-                    exGroupMemberInfo.groupMembersInfo.setUserID(exUserInfo.userInfo.getFriendInfo().getUserID());
+                    exGroupMemberInfo.groupMembersInfo.setUserID(userId);
 
                     if (vm.exGroupMembers.getValue().contains(exGroupMemberInfo)
                         || vm.exGroupManagement.getValue().contains(exGroupMemberInfo)
-                        || exUserInfo.userInfo.getUserID().equals(defSelectId)) {
+                        || userId.equals(defSelectId)) {
                         exUserInfo.isEnabled = false;
                         exUserInfo.isSelect = true;
                     }
 
                     if (null != selectTargetVM) {
                         MultipleChoice data=new MultipleChoice();
-                        data.key=exUserInfo.userInfo.getUserID();
+                        data.key=userId;
                         exUserInfo.isSelect = selectTargetVM.contains(data);
                     }
                 }
