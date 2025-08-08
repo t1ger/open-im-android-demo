@@ -28,6 +28,9 @@ import io.openim.android.ouicore.base.vm.injection.Easy;
 import io.openim.android.ouicore.databinding.LayoutPopSelectedFriendsBinding;
 import io.openim.android.ouicore.entity.ExGroupMemberInfo;
 import io.openim.android.ouicore.entity.ExUserInfo;
+import io.openim.android.ouicore.entity.SelectableUser;
+import io.openim.android.ouicore.entity.GroupMemberSelectable;
+import io.openim.android.ouicore.base.BaseApp;
 
 import io.openim.android.ouicore.ex.MultipleChoice;
 import io.openim.android.ouicore.net.bage.GsonHel;
@@ -180,12 +183,30 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                                    int position) {
                 if (getItemViewType(position) == ITEM) {
                     ViewHol.ItemViewHo itemViewHo = (ViewHol.ItemViewHo) holder;
-                    if (isRemoveGroup || isSelectMember) {
+                    
+                    // 🔥 使用适配器模式统一处理数据显示
+                    if (data.selectableUser != null) {
+                        // ✅ 新的适配器逻辑：统一处理所有数据源
+                        SelectableUser user = data.selectableUser;
+                        itemViewHo.view.avatar.load(user.getAvatarUrl());
+                        itemViewHo.view.nickName.setText(user.getDisplayName());
+                        
+                        // 设置按钮可用性
+                        itemViewHo.view.item.setEnabled(user.isEnabled());
+                        itemViewHo.view.item.setAlpha(user.isEnabled() ? 1.0f : 0.5f);
+                        
+                        Log.d("InitiateGroupActivity", "使用适配器显示用户: " + user.getDisplayName() + " (" + user.getSourceType() + ")");
+                        
+                    } else if (isRemoveGroup || isSelectMember) {
+                        // 📌 兼容性逻辑：群成员管理（旧逻辑）
                         ExGroupMemberInfo memberInfo = data.exGroupMemberInfo;
-                        itemViewHo.view.avatar.load(memberInfo.groupMembersInfo.getFaceURL());
-                        itemViewHo.view.nickName.setText(memberInfo.groupMembersInfo.getNickname());
+                        if (memberInfo != null && memberInfo.groupMembersInfo != null) {
+                            itemViewHo.view.avatar.load(memberInfo.groupMembersInfo.getFaceURL());
+                            itemViewHo.view.nickName.setText(memberInfo.groupMembersInfo.getNickname());
+                        }
+                        
                     } else {
-                        // 🔥 修复空指针异常：安全获取FriendInfo
+                        // 📌 兼容性逻辑：朋友选择（旧逻辑）
                         FriendInfo friendInfo = data.userInfo.getFriendInfo();
                         if (friendInfo != null) {
                             itemViewHo.view.avatar.load(friendInfo.getFaceURL());
@@ -210,11 +231,27 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                         selected();
 
                         if (null != selectTargetVM) {
-                            if (data.isSelect)
-                                selectTargetVM.addMetaData(data.userInfo.getUserID(),
-                                    data.userInfo.getNickname(),data.userInfo.getFaceURL());
-                            else
-                                selectTargetVM.removeMetaData(data.userInfo.getUserID());
+                            // 🔥 使用适配器统一获取用户信息
+                            String userId, displayName, avatarUrl;
+                            
+                            if (data.selectableUser != null) {
+                                // ✅ 优先使用适配器
+                                SelectableUser user = data.selectableUser;
+                                userId = user.getUserId();
+                                displayName = user.getDisplayName();
+                                avatarUrl = user.getAvatarUrl();
+                            } else {
+                                // 📌 兼容性逻辑
+                                userId = data.getUserId();
+                                displayName = data.getDisplayName();
+                                avatarUrl = data.getAvatarUrl();
+                            }
+                            
+                            if (data.isSelect) {
+                                selectTargetVM.addMetaData(userId, displayName, avatarUrl);
+                            } else {
+                                selectTargetVM.removeMetaData(userId);
+                            }
                         }
 
                     });
@@ -295,9 +332,13 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
             });
             vm.exGroupMembers.observe(this, v -> {
                 if (null == v || v.isEmpty()) return;
+                
+                // 🔥 关键修复：使用适配器模式统一处理群成员数据
                 List<ExGroupMemberInfo> groupMemberInfo = new ArrayList<>();
                 groupMemberInfo.addAll(v);
+                
                 try {
+                    // 处理群管理员
                     for (ExGroupMemberInfo memberInfo : vm.exGroupManagement.getValue()) {
                         if (!memberInfo.groupMembersInfo.getUserID().equals(vm.groupsInfo.getValue().getOwnerUserID())) {
                             String nickName = memberInfo.groupMembersInfo.getNickname();
@@ -316,20 +357,40 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                         }
                     }
                 } catch (Exception e) {
+                    Log.w("InitiateGroupActivity", "处理群管理员失败", e);
                 }
 
+                // 🔥 使用适配器模式转换数据
                 List<ExUserInfo> exUserInfos = new ArrayList<>();
+                String currentUserId = BaseApp.inst().loginCertificate.userID;
+                String groupOwnerId = vm.groupsInfo.getValue() != null ? vm.groupsInfo.getValue().getOwnerUserID() : "";
+                boolean isForGroupCall = getIntent().getBooleanExtra("isGroupCall", false);
+                
                 for (ExGroupMemberInfo exGroupMemberInfo : groupMemberInfo) {
                     ExUserInfo exUserInfo = new ExUserInfo();
                     exUserInfo.sortLetter = exGroupMemberInfo.sortLetter;
                     exUserInfo.exGroupMemberInfo = exGroupMemberInfo;
-                    UserInfo userInfo=new UserInfo();
+                    
+                    // ✅ 使用适配器代替原有的UserInfo创建逻辑
+                    GroupMemberSelectable selectable = new GroupMemberSelectable(
+                        exGroupMemberInfo.groupMembersInfo, 
+                        currentUserId, 
+                        groupOwnerId, 
+                        isForGroupCall
+                    );
+                    exUserInfo.selectableUser = selectable;
+                    
+                    // 保留原有的userInfo用于兼容性（可选）
+                    UserInfo userInfo = new UserInfo();
                     userInfo.setUserID(exGroupMemberInfo.groupMembersInfo.getUserID());
                     userInfo.setNickname(exGroupMemberInfo.groupMembersInfo.getNickname());
                     userInfo.setFaceURL(exGroupMemberInfo.groupMembersInfo.getFaceURL());
-                    exUserInfo.userInfo=userInfo;
+                    exUserInfo.userInfo = userInfo;
+                    
                     exUserInfos.add(exUserInfo);
                 }
+                
+                Log.d("InitiateGroupActivity", "群成员数据加载完成，数量: " + exUserInfos.size());
                 adapter.setItems(exUserInfos);
             });
         } else {
