@@ -33,6 +33,7 @@ public class LogExceptionHandler {
         UI_ERROR("界面异常"),
         DATA_ERROR("数据异常"),
         STATE_ERROR("状态异常"),
+        AUTH_ERROR("身份验证异常"),
         CONFIG_ERROR("配置异常"),
         PERMISSION_ERROR("权限异常"),
         UNKNOWN_ERROR("未知异常");

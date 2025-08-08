@@ -77,6 +77,7 @@ import io.openim.android.ouicore.utils.Constants;
 import io.openim.android.ouicore.utils.GetFilePathFromUri;
 import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.MediaPlayerUtil;
 import io.openim.android.ouicore.utils.NotificationUtil;
 import io.openim.android.ouicore.utils.Routes;
