@@ -44,6 +44,7 @@ import io.openim.android.ouicore.entity.MsgExpand;
 import io.openim.android.ouicore.entity.NotificationMsg;
 import io.openim.android.ouicore.ex.AtUser;
 import io.openim.android.ouicore.net.bage.GsonHel;
+import io.openim.android.ouicore.config.CallingConfig;
 import io.openim.android.ouicore.services.CallingService;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.Constants;
@@ -968,58 +969,90 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
 
     /**
      * 发起群组通话
-     * 使用buildGroupSignalingInfo构建群组信令，CallingService会自动识别并显示九宫格界面
+     * 正确流程：显示成员选择界面 → 用户选择成员 → 发起群组通话
      */
     private void initiateGroupCall() {
         if (null == callingService || TextUtils.isEmpty(groupID)) {
             getIView().toast("通话服务不可用");
             return;
         }
-
-        // 获取群组信息
-        getGroupsInfo(groupID, groupInfoList -> {
-            if (groupInfoList == null || groupInfoList.isEmpty()) {
-                getIView().toast("获取群组信息失败");
+        
+        Log.d(TAG, "开始群组通话流程 - 显示成员选择界面");
+        
+        // ✅ 正确设计：先弹出成员选择界面，让用户选择要邀请的成员
+        getIView().showGroupMemberSelection(groupID, isVideoCall);
+    }
+    
+    /**
+     * 用户选择群成员后的回调处理
+     * @param selectedMemberIds 用户选择的成员ID列表
+     * @param isVideo 是否为视频通话
+     */
+    public void onGroupMembersSelected(List<String> selectedMemberIds, boolean isVideo) {
+        // 参数校验
+        if (selectedMemberIds == null || selectedMemberIds.isEmpty()) {
+            android.util.Log.w(TAG, "选择的成员列表为空");
+            toast("请选择至少一名成员进行通话");
+            return;
+        }
+        
+        // 群组ID校验
+        if (TextUtils.isEmpty(groupID)) {
+            android.util.Log.e(TAG, "群组ID为空，无法发起群组通话");
+            toast("群组信息异常，请重试");
+            return;
+        }
+        
+        // CallingService校验
+        if (callingService == null) {
+            android.util.Log.e(TAG, "CallingService未初始化");
+            toast("通话服务未准备就绪，请重试");
+            return;
+        }
+        
+        // 成员数量限制检查
+        if (selectedMemberIds.size() > CallingConfig.MAX_GROUP_CALL_MEMBERS) {
+            android.util.Log.w(TAG, "选择成员数量超过限制: " + selectedMemberIds.size() + "/" + CallingConfig.MAX_GROUP_CALL_MEMBERS);
+            toast("最多只能选择" + CallingConfig.MAX_GROUP_CALL_MEMBERS + "名成员进行群组通话");
+            return;
+        }
+        
+        android.util.Log.d(TAG, "用户选择了 " + selectedMemberIds.size() + " 个成员进行群组通话，isVideo: " + isVideo);
+        
+        try {
+            // ✅ 使用用户选择的成员列表构建群组信令
+            SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideo, groupID, selectedMemberIds);
+            
+            // 信令数据校验
+            if (groupSignalingInfo == null) {
+                android.util.Log.e(TAG, "群组信令构建失败，返回null");
+                toast("构建通话信令失败，请重试");
                 return;
             }
-
-            // 获取群成员列表
-            OpenIMClient.getInstance().groupManager.getGroupMemberList(new OnBase<List<GroupMembersInfo>>() {
-                @Override
-                public void onError(int code, String error) {
-                    getIView().toast("获取群组成员失败: " + error);
-                }
-
-                @Override
-                public void onSuccess(List<GroupMembersInfo> groupMembersInfos) {
-                    try {
-                        // 构建群成员ID列表（排除自己）
-                        List<String> memberIds = new ArrayList<>();
-                        String currentUserId = BaseApp.inst().loginCertificate.userID;
-                        
-                        for (GroupMembersInfo member : groupMembersInfos) {
-                            if (!member.getUserID().equals(currentUserId)) {
-                                memberIds.add(member.getUserID());
-                            }
-                        }
-                        
-                        if (memberIds.isEmpty()) {
-                            getIView().toast("群组中没有其他成员");
-                            return;
-                        }
-                        
-                        // ✅ 正确实现：使用buildGroupSignalingInfo构建群组信令
-                        // CallingService会根据SessionType自动识别并显示九宫格界面
-                        SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideoCall, groupID, memberIds);
-                        callingService.call(groupSignalingInfo);
-                        
-                    } catch (Exception e) {
-                        getIView().toast("发起群组通话失败: " + e.getMessage());
-                        Log.e(TAG, "Group call failed", e);
-                    }
-                }
-            }, groupID, 0, 0, 100);
-        });
+            
+            if (groupSignalingInfo.getInvitation() == null) {
+                android.util.Log.e(TAG, "群组信令Invitation为null");
+                toast("信令数据异常，请重试");
+                return;
+            }
+            
+            android.util.Log.d(TAG, "群组信令构建完成 - SessionType: " + groupSignalingInfo.getInvitation().getSessionType());
+            android.util.Log.d(TAG, "群组信令构建完成 - GroupID: " + groupSignalingInfo.getInvitation().getGroupID());
+            android.util.Log.d(TAG, "群组信令构建完成 - 被邀请用户: " + groupSignalingInfo.getInvitation().getInviteeUserIDList());
+            
+            callingService.call(groupSignalingInfo);
+            android.util.Log.d(TAG, "群组通话信令已发送给CallingService");
+            
+        } catch (IllegalArgumentException e) {
+            android.util.Log.e(TAG, "参数错误: " + e.getMessage(), e);
+            toast("参数错误，请检查选择的成员");
+        } catch (SecurityException e) {
+            android.util.Log.e(TAG, "权限不足: " + e.getMessage(), e);
+            toast("没有权限发起群组通话");
+        } catch (Exception e) {
+            android.util.Log.e(TAG, "发起群组通话失败", e);
+            toast("发起群组通话失败: " + e.getMessage());
+        }
     }
 
     public void toast(String tips) {
@@ -1034,6 +1067,13 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
         void scrollToPosition(int position);
 
         void closePage();
+        
+        /**
+         * 显示群组成员选择界面
+         * @param groupId 群组ID
+         * @param isVideo 是否为视频通话
+         */
+        void showGroupMemberSelection(String groupId, boolean isVideo);
     }
 
     @Override

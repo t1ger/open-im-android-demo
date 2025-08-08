@@ -2,7 +2,50 @@
 
 ## 🎯 核心架构原则
 
-### 1. 信令驱动架构 (Signal-Driven Architecture)
+### 1. 统一异常处理架构 (Unified Exception Handling Architecture) 🆕
+
+**核心原则**: **统一异常处理，规范错误管理**
+
+这是本项目的新添加的重要架构原则。所有的异常处理必须通过LogExceptionHandler统一管理，确保：
+- 异常处理的一致性和可预测性
+- 业务流程的完整追踪和监控
+- 用户友好的错误提示和恢复机制
+
+#### 正确的异常处理流程
+```java
+// 正确：使用统一异常处理
+public void someBusinessMethod() {
+    try {
+        // 业务逻辑
+        performBusinessOperation();
+    } catch (Exception e) {
+        // 统一异常处理
+        String errorCode = LogExceptionHandler.handleException(
+            e, "CallingVM", "business_operation", "业务操作失败"
+        );
+        // 基于错误类型执行恢复策略
+        handleErrorRecovery(errorCode, e);
+    }
+}
+```
+
+#### BusinessFlow业务流程追踪
+```java
+// 业务流程的完整生命周期管理
+LogExceptionHandler.BusinessFlow flow = LogExceptionHandler.BusinessFlow.start(
+    "CallingVM", "群组通话发起"
+);
+try {
+    // 业务操作
+    initiateGroupCall();
+    flow.success("群组通话发起成功");
+} catch (Exception e) {
+    flow.error(e, "群组通话发起失败");
+    throw e;
+}
+```
+
+### 2. 信令驱动架构 (Signal-Driven Architecture)
 
 **核心原则**: **不直接操作LiveKit API**
 
@@ -44,7 +87,7 @@ public void enableCamera() {
 }
 ```
 
-### 2. Manager模式封装
+### 3. Manager模式封装
 
 使用Manager模式封装对LiveKit SDK的直接访问：
 
@@ -78,7 +121,7 @@ class VideoResourcePool {
 }
 ```
 
-### 3. 状态管理统一性
+### 4. 状态管理统一性
 
 #### 使用StateFlow进行响应式状态管理
 ```kotlin
@@ -146,8 +189,21 @@ public enum CallMemberState {
 - `VideoBindingManager.kt`: 视频绑定管理
 - `CallRoomManager.kt`: 房间连接管理
 
+### 异常处理层 (Exception Handling Layer) 🆕
+**职责**: 统一异常处理和日志管理
+- `LogExceptionHandler.java`: 统一异常处理工具类
+  - 异常分类和自动推断
+  - BusinessFlow业务流程追踪
+  - 错误恢复策略建议
+- `L.java`: 增强日志系统(向后兼容)
+  - critical()、stateChange()、handleException()
+  - 业务流程日志记录
+  - 关键操作状态追踪
+
 **原则**:
 - 每个Manager专注单一职责领域
+- 所有异常必须通过LogExceptionHandler处理
+- 日志系统必须保持向后兼容性
 - 是唯一可以直接调用LiveKit API的层
 - 向上提供领域特定的业务接口
 

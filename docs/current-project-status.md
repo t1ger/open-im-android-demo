@@ -2,9 +2,10 @@
 
 ## 📊 项目概览
 
-**版本**: MVP v1.0 已完成  
-**状态**: ✅ 编译成功 (BUILD SUCCESSFUL)  
+**版本**: MVP v1.1 - 统一异常处理架构版本  
+**状态**: 🔧 重构中 - 异常处理和日志系统统一化完成  
 **架构合规**: ✅ 严格遵循信令驱动模式，不直接操作LiveKit API  
+**异常处理**: ✅ 统一异常处理架构已实现  
 **LiveKit版本**: 2.0.1  
 
 ## 🎯 核心功能状态
@@ -49,10 +50,20 @@ LiveKit SDK
 
 ### 关键组件状态
 
+#### LogExceptionHandler.java ✅ (新增)
+- **状态**: 统一异常处理工具类，功能完整
+- **功能**: 异常分类、业务流程追踪、自动错误推断
+- **架构**: 支持BusinessFlow类，实现完整的业务操作生命周期管理
+
+#### L.java (增强版) ✅
+- **状态**: 增强原有日志类，完全向后兼容
+- **功能**: critical()、stateChange()、handleException()等关键方法
+- **架构**: 支持异常处理和业务流程追踪
+
 #### CallingVM.java ✅
-- **状态**: 已完成修复，无重复方法
-- **功能**: 群组通话业务逻辑，信令处理
-- **架构**: 遵循信令驱动模式
+- **状态**: 关键流程错误处理增强完成
+- **功能**: 群组通话业务逻辑，信令处理，统一异常处理
+- **架构**: 遵循信令驱动模式，集成LogExceptionHandler
 
 #### CallViewModel.kt ✅
 - **状态**: 已完成Week 2 Day 6功能集成
@@ -92,7 +103,7 @@ implementation 'androidx.lifecycle:lifecycle-viewmodel-ktx:2.6.2'
 OUIKit/OUICalling/
 ├── src/main/java/io/openim/android/ouicalling/
 │   ├── vm/
-│   │   ├── CallingVM.java          # 主业务逻辑
+│   │   ├── CallingVM.java          # 主业务逻辑(已重构)
 │   │   └── CallViewModel.kt        # LiveKit封装层
 │   ├── manager/
 │   │   ├── GroupCallManager.kt     # 群组通话管理
@@ -104,30 +115,41 @@ OUIKit/OUICalling/
 │   │   ├── CallMemberState.java    # 成员状态枚举
 │   │   └── MultiPartySignaling.java # 多方信令协议
 │   ├── utils/
+│   │   ├── LogExceptionHandler.java # ✨新增: 统一异常处理工具
+│   │   ├── L.java                  # ✨增强: 日志系统(向后兼容)
 │   │   ├── VideoStreamMonitor.kt   # Week2Day6:流监控
 │   │   ├── SignalingDeduplicator.java # 信令去重
 │   │   └── VideoResourcePool.java  # 视频资源池
-│   └── CallDialog.java            # UI控制器
+│   └── CallDialog.java            # UI控制器(已重构)
+├── OUIConversation/src/main/java/io/openim/android/ouiconversation/
+│   └── vm/
+│       └── ChatActivity.java       # ✨已重构: 异常处理增强
 ```
 
 ## 🎯 当前成就
 
-### 编译状态 ✅ (🆕 2024年8月7日更新)
+### 统一异常处理架构 ✅ (🆕 2024年12月更新)
 ```bash
-# OUICalling模块编译成功，架构违规问题已全部修复
-Task :OUICalling:compileDebugJavaWithJavac SUCCESS
-6 architecture violations fixed, 0 compilation errors remaining
-Architecture compliance: 100% signal-driven approach
+# 异常处理和日志系统统一化重构完成
+✅ LogExceptionHandler统一异常处理工具类
+✅ L.java增强日志系统(保持向后兼容)
+✅ CallDialog.java重构完成
+✅ ChatActivity.java异常处理增强
+✅ CallingVM.java关键流程错误处理增强
+✅ 编译错误修复(IMUtilSignalingPatch.java, SignalingInfoFactory.java)
+🔧 编译验证中 - 依赖问题修复进行中
 ```
-🎆 **重大更新**: 修复了6个架构违规编译错误，现在OUICalling模块完全符合信令驱动原则。
+🎆 **重大更新**: 实现了统一的异常处理架构，建立了业界标准的日志和错误管理机制。
 
 ### 架构合规 ✅
 - ✅ 严格遵循\"不直接操作LiveKit API\"原则
 - ✅ 信令驱动架构完整实现
 - ✅ Manager模式正确封装SDK调用
-- ✅ **新增**: 6个架构违规问题已修复
-- ✅ **新增**: 完整的异常处理链路
-- ✅ **新增**: 架构合规性验证通过
+- ✅ **新增**: 统一异常处理架构(LogExceptionHandler)
+- ✅ **新增**: 业务流程追踪机制(BusinessFlow)
+- ✅ **新增**: 增强日志系统(L.java扩展)
+- ✅ **新增**: 分类错误处理和用户友好提示
+- ✅ **新增**: 错误恢复策略机制
 
 ### 功能完整性 ✅
 - ✅ 1v1通话：100%功能正常
@@ -138,8 +160,11 @@ Architecture compliance: 100% signal-driven approach
 
 ### 代码质量
 - 🟡 CallViewModel.kt需要重构（目前772行，建议拆分为多个Manager）
-- ✅ **已修复**: 架构违规问题（直接LiveKit API调用）
-- ✅ **已完善**: 异常处理链路完整性
+- ✅ **已完成**: 统一异常处理架构实现
+- ✅ **已完成**: LogExceptionHandler工具类(支持异常分类、业务流程追踪)
+- ✅ **已完成**: L.java日志系统增强(向后兼容)
+- ✅ **已完成**: 关键组件异常处理重构(CallDialog, ChatActivity, CallingVM)
+- 🔧 **进行中**: 编译问题修复和依赖优化
 - 🟡 单元测试覆盖率有待提升
 
 ### 功能限制
@@ -158,9 +183,9 @@ Architecture compliance: 100% signal-driven approach
 ## 🚀 下一步计划
 
 ### 短期 (1-2周)
-1. **错误处理完善**: 补充用户友好的错误提示
-2. **性能优化**: 内存使用优化和CPU负载控制
-3. **UI细节**: 完善交互细节和用户体验
+1. **编译问题修复**: 解决CallingVM.java中的依赖问题和参数不匹配
+2. **异常处理验证**: 全面测试统一异常处理架构的稳定性
+3. **性能优化**: 内存使用优化和CPU负载控制
 
 ### 中期 (2-4周)
 1. **代码重构**: CallViewModel拆分重构

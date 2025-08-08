@@ -67,6 +67,7 @@ import io.openim.android.ouicore.entity.MsgExpand;
 import io.openim.android.ouicore.entity.MuteMemberNotification;
 import io.openim.android.ouicore.entity.NotificationMsg;
 import io.openim.android.ouicore.entity.OANotification;
+import io.openim.android.ouicore.factory.SignalingInfoFactory;
 import io.openim.android.ouicore.entity.QuitGroupNotification;
 import io.openim.android.ouicore.ex.AtUser;
 import io.openim.android.ouicore.ex.MultipleChoice;

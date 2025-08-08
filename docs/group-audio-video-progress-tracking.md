@@ -546,4 +546,81 @@ error: package io.openim.android.ouicalling.vm does not exist
 
 ---
 
+## 🎯 成员选择功能添加阶段 (2024年12月)
+
+### 🔄 设计流程修正
+
+#### 🤔 设计重新评估
+经过用户反馈和深入分析，发现之前的实现路径有误。用户期望的正确流程应该是：
+
+```
+点击群视频通话 → 选择群成员界面 → 用户选择成员 → 进入九宫格通话界面
+```
+
+**之前的错误实现**: 直接发起群组通话，没有成员选择步骤，且显示单人通话界面
+
+#### ✅ 正确设计实现
+
+**1. 修正ChatVM逻辑**
+```java
+// ChatVM.java
+private void initiateGroupCall() {
+    // ✅ 正确设计：先弹出成员选择界面，让用户选择要邀请的成员
+    getIView().showGroupMemberSelection(groupID, isVideoCall);
+}
+
+public void onGroupMembersSelected(List<String> selectedMemberIds, boolean isVideo) {
+    // ✅ 使用用户选择的成员列表构建群组信令
+    SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideo, groupID, selectedMemberIds);
+    callingService.call(groupSignalingInfo);
+}
+```
+
+**2. 实现成员选择界面**
+```java
+// ChatActivity.java
+@Override
+public void showGroupMemberSelection(String groupId, boolean isVideo) {
+    Intent intent = new Intent();
+    intent.setClass(this, getGroupMemberSelectionActivityClass());
+    intent.putExtra(Constants.K_GROUP_ID, groupId);
+    intent.putExtra(Constants.IS_SELECT_MEMBER, true);
+    intent.putExtra("isVideo", isVideo);
+    intent.putExtra(Constants.K_SIZE, 8); // 最多选择8个成员（加上发起者共9人）
+    
+    groupMemberSelectionLauncher.launch(intent);
+}
+```
+
+**3. 复用现有成员选择组件**
+- 复用`InitiateGroupActivity`的成员选择功能
+- 通过`ActivityResultLauncher`处理选择结果
+- 利用现有的`SelectTargetVM`和群组成员管理逻辑
+
+#### 📋 实现统计
+
+| 文件 | 改动类型 | 行数 | 说明 |
+|------|---------|------|------|
+| `ChatVM.java` | 🔄 重构 | -51+42行 | 重写群组通话逻辑，添加成员选择步骤 |
+| `ChatActivity.java` | ➕ 新增 | +51行 | 实现成员选择界面调用和结果处理 |
+| `CallDialog.java` | 🔍 调试 | +12行 | 添加关键节点调试日志 |
+
+#### 🎯 修正后的完整流程
+
+1. **用户点击群视频通话** → ChatVM.call() → initiateGroupCall()
+2. **显示成员选择界面** → showGroupMemberSelection() → InitiateGroupActivity
+3. **用户选择成员** → InitiateGroupActivity返回选中成员ID列表
+4. **构建群组信令** → onGroupMembersSelected() → buildGroupSignalingInfo()
+5. **发起群组通话** → callingService.call(groupSignalingInfo)
+6. **自动切换UI** → CallDialog.bindData() → switchToGroupCallMode()
+7. **显示九宫格界面** → GroupMemberAdapter渲染成员视频
+
+#### ✨ 优势
+- **用户体验**: 符合用户预期的操作流程
+- **架构合规**: 遵循OpenIM的模块化设计原则
+- **代码复用**: 最大化利用现有的成员选择组件
+- **可扩展性**: 便于后续添加更多群组通话功能
+
+---
+
 **📝 备注**: 此文档将每日更新进度，每周进行总结回顾。团队成员需及时更新任务状态和遇到的问题。

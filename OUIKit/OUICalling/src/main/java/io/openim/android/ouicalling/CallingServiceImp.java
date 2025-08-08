@@ -234,7 +234,7 @@ public class CallingServiceImp implements CallingService {
     @Override
     public void onHangup(SignalingInfo s) {
         L.e(TAG, "----onHangup-----");
-        if (null == callDialog || callDialog.callingVM.isGroup) return;
+        if (null == callDialog || callDialog.callingVM.isGroupCall()) return; // ✅ 使用统一状态管理
         callDialog.callingVM.renewalDB(callDialog.buildPrimaryKey(),
             (realm, callHistory) -> callHistory.setDuration((int)
                 (System.currentTimeMillis() - callHistory.getDate())));
@@ -242,7 +242,7 @@ public class CallingServiceImp implements CallingService {
     }
 
     private void insetDB() {
-        if (callDialog.callingVM.isGroup) return;
+        if (callDialog.callingVM.isGroupCall()) return; // ✅ 使用统一状态管理
         List<String> ids = new ArrayList<>();
         ids.add(callDialog.callingVM.isCallOut ?
             signalingInfo.getInvitation().getInviteeUserIDList().get(0) :

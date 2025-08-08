@@ -14,6 +14,7 @@ import java.util.Queue;
 import java.util.WeakHashMap;
 
 import io.openim.android.ouicore.base.BaseApp;
+import io.openim.android.ouicore.config.CallingConfig;
 
 /**
  * 视频资源池管理器 - 业界最佳实践
@@ -29,8 +30,8 @@ import io.openim.android.ouicore.base.BaseApp;
 public class VideoResourcePool {
     private static final String TAG = "VideoResourcePool";
     
-    // 最大渲染器数量（支持9人通话）
-    private static final int MAX_TEXTURE_RENDERERS = 12;
+    // 最大渲染器数量（支持群组通话 + 预留）
+    private static final int MAX_TEXTURE_RENDERERS = CallingConfig.MAX_VIDEO_RENDERERS + 3; // 9个基础 + 3个预留
     
     // 空闲渲染器池
     private final Queue<TextureViewRenderer> rendererPool = new LinkedList<>();

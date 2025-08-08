@@ -24,6 +24,7 @@ import android.view.ViewTreeObserver;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.RelativeLayout;
+import android.widget.Toast;
 import android.window.OnBackInvokedCallback;
 import android.window.OnBackInvokedDispatcher;
 
@@ -68,8 +69,10 @@ import io.openim.android.ouicore.net.RXRetrofit.N;
 import io.openim.android.ouicore.services.CallingService;
 import io.openim.android.ouicore.utils.ActivityManager;
 import io.openim.android.ouicore.utils.Common;
+import io.openim.android.ouicore.config.CallingConfig;
 import io.openim.android.ouicore.utils.Constants;
 import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.Obs;
 import io.openim.android.ouicore.utils.OnDedrepClickListener;
 import io.openim.android.ouicore.utils.Routes;
@@ -101,6 +104,9 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
     private BottomInputCote bottomInputCote;
     private boolean screenWasOff = false;
     private PowerManager powerManager;
+    
+    // 群组成员选择的ActivityResultLauncher
+    private ActivityResultLauncher<Intent> groupMemberSelectionLauncher;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -113,6 +119,10 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
         view.setChatVM(vm);
         callingService =
             (CallingService) ARouter.getInstance().build(Routes.Service.CALLING).navigation();
+        vm.callingService = callingService;
+        
+        // 初始化群组成员选择的ActivityResultLauncher
+        initGroupMemberSelectionLauncher();
 
         initView();
         listener();
@@ -136,6 +146,7 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
             });
             powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
         } catch (Exception e) {
+            LogExceptionHandler.handleException("ChatActivity", "初始化异常", LogExceptionHandler.ExceptionType.UNKNOWN_ERROR, e);
         }
     }
 
@@ -483,6 +494,144 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
     @Override
     public void closePage() {
         finish();
+    }
+    
+    /**
+     * 初始化群组成员选择的ActivityResultLauncher
+     */
+    private void initGroupMemberSelectionLauncher() {
+        groupMemberSelectionLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                try {
+                    L.d("ChatActivity", "成员选择返回，resultCode=" + result.getResultCode());
+                    
+                    if (result.getResultCode() == RESULT_CANCELED) {
+                        L.d("ChatActivity", "用户取消了成员选择");
+                        return;
+                    }
+                    
+                    if (result.getResultCode() != RESULT_OK) {
+                        L.w("ChatActivity", "成员选择返回异常状态码: " + result.getResultCode());
+                        Toast.makeText(this, "选择操作异常，请重试", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    Intent data = result.getData();
+                    if (data == null) {
+                        L.w("ChatActivity", "成员选择返回数据为null");
+                        Toast.makeText(this, "未获取到选择结果，请重试", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    // 获取用户选择的成员ID列表
+                    ArrayList<String> selectedMemberIds = data.getStringArrayListExtra(Constants.K_RESULT);
+                    boolean isVideo = data.getBooleanExtra("isVideo", false);
+                    
+                    // 数据校验
+                    if (selectedMemberIds == null) {
+                        L.w("ChatActivity", "选择的成员列表为null");
+                        Toast.makeText(this, "选择数据格式异常，请重试", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    if (selectedMemberIds.isEmpty()) {
+                        L.d("ChatActivity", "用户未选择任何成员");
+                        Toast.makeText(this, "请至少选择一名成员进行通话", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    // 过滤空字符串和null
+                    selectedMemberIds.removeIf(id -> TextUtils.isEmpty(id));
+                    if (selectedMemberIds.isEmpty()) {
+                        L.w("ChatActivity", "过滤后的成员列表为空");
+                        Toast.makeText(this, "选择的成员数据无效，请重试", Toast.LENGTH_SHORT).show();
+                        return;
+                    }
+                    
+                    L.businessFlow("ChatActivity", "成员选择完成", "数量: " + selectedMemberIds.size() + ", 类型: " + (isVideo ? "视频" : "音频"));
+                    
+                    // 回调ChatVM处理用户选择
+                    vm.onGroupMembersSelected(selectedMemberIds, isVideo);
+                    
+                } catch (Exception e) {
+                    LogExceptionHandler.handleException("ChatActivity", "处理成员选择结果", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
+                    Toast.makeText(this, "处理选择结果失败，请重试", Toast.LENGTH_SHORT).show();
+                }
+            }
+        );
+    }
+    
+    @Override
+    public void showGroupMemberSelection(String groupId, boolean isVideo) {
+        // 参数校验
+        if (TextUtils.isEmpty(groupId)) {
+            LogExceptionHandler.handleException("ChatActivity", "群组ID为空", LogExceptionHandler.ExceptionType.DATA_ERROR, null);
+            Toast.makeText(this, "群组信息异常，请重试", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
+        try {
+            Class<?> activityClass = getGroupMemberSelectionActivityClass();
+            if (activityClass == null) {
+                LogExceptionHandler.handleException("ChatActivity", "无法获取成员选择Activity类", LogExceptionHandler.ExceptionType.CONFIG_ERROR, null);
+                Toast.makeText(this, "功能暂不可用，请重试", Toast.LENGTH_SHORT).show();
+                return;
+            }
+            
+            Intent intent = new Intent();
+            intent.setClass(this, activityClass);
+            intent.putExtra(Constants.K_GROUP_ID, groupId);
+            intent.putExtra(Constants.IS_SELECT_MEMBER, true);
+            intent.putExtra("isVideo", isVideo); // 传递视频/音频标识
+            intent.putExtra(Constants.K_SIZE, CallingConfig.MAX_GROUP_CALL_MEMBERS); // 最多选择成员数（不包含发起者）
+            intent.putExtra(Constants.K_NAME, "选择通话成员");
+            
+            groupMemberSelectionLauncher.launch(intent);
+            L.businessFlow("ChatActivity", "群组成员选择", "启动，groupId=" + groupId + ", 类型=" + (isVideo ? "视频" : "音频"));
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("ChatActivity", "启动成员选择失败", LogExceptionHandler.ExceptionType.UI_ERROR, e);
+            Toast.makeText(this, "启动选择界面失败，请重试", Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * 获取群组成员选择Activity的Class
+     * 使用ARouter路由替代直接Class引用，避免模块依赖问题
+     */
+    private Class<?> getGroupMemberSelectionActivityClass() {
+        // 检查ARouter是否已初始化
+        if (ARouter.getInstance() == null) {
+            L.w("ChatActivity", "ARouter未初始化，尝试初始化");
+            try {
+                ARouter.init(getApplication());
+            } catch (Exception e) {
+                LogExceptionHandler.handleException("ChatActivity", "ARouter初始化失败", LogExceptionHandler.ExceptionType.CONFIG_ERROR, e);
+                return null;
+            }
+        }
+        
+        try {
+            // 通过ARouter获取InitiateGroupActivity的Class
+            Object result = ARouter.getInstance().build(Routes.Group.CREATE_GROUP).navigation();
+            if (result != null) {
+                return result.getClass();
+            }
+            L.w("ChatActivity", "ARouter返回null，尝试反射方式");
+        } catch (Exception e) {
+            L.w("ChatActivity", "ARouter获取Activity失败: " + e.getMessage());
+        }
+        
+        // 如果ARouter失败，使用反射获取
+        try {
+            Class<?> clazz = Class.forName("io.openim.android.ouigroup.ui.InitiateGroupActivity");
+            L.d("ChatActivity", "通过反射获取Activity类成功");
+            return clazz;
+        } catch (ClassNotFoundException ex) {
+            LogExceptionHandler.handleException("ChatActivity", "反射获取Activity失败", LogExceptionHandler.ExceptionType.CONFIG_ERROR, ex);
+            return null;
+        }
     }
 
     @Override

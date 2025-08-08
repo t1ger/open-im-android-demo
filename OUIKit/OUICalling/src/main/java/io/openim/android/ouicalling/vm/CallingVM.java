@@ -1,6 +1,7 @@
 package io.openim.android.ouicalling.vm;
 
 import android.bluetooth.BluetoothAdapter;
+import android.text.TextUtils;
 import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.DialogInterface;
@@ -28,6 +29,7 @@ import io.openim.android.ouicalling.entity.CallMemberState;
 import io.openim.android.ouicalling.entity.GroupCallMember;
 import io.openim.android.ouicalling.entity.MultiPartySignaling;
 import io.openim.android.ouicalling.utils.SignalingDeduplicator;
+import io.openim.android.ouicalling.state.CallStateManager;
 import io.openim.android.ouicalling.utils.VideoResourcePool;
 
 import io.livekit.android.renderer.TextureViewRenderer;
@@ -46,6 +48,7 @@ import io.openim.android.ouicore.services.CallingService;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.Constants;
 import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.MediaPlayerUtil;
 import io.openim.android.ouicore.utils.TimeUtil;
 import io.openim.android.sdk.OpenIMClient;
@@ -65,6 +68,7 @@ import kotlin.coroutines.EmptyCoroutineContext;
 import kotlinx.coroutines.CoroutineScope;
 
 public class CallingVM {
+    private static final String TAG = "CallingVM";
     public final CoroutineScope scope;
     //通话时间
     private Timer timer;
@@ -85,20 +89,21 @@ public class CallingVM {
     public boolean isStartCall;
     //呼出
     public boolean isCallOut;
-    //是否是群
-    public boolean isGroup;
     
-    // === 群组通话扩展字段 ===
-    // 是否群组通话
-    public boolean isGroupCall = false;
+    // === 统一状态管理 ===
+    // 基于信令数据的状态管理器
+    private final CallStateManager stateManager = new CallStateManager();
     // 群组通话成员列表（线程安全）
     public final CopyOnWriteArrayList<GroupCallMember> groupMembers = new CopyOnWriteArrayList<>();
     // 当前发言人ID（v1.2实现）
     public String currentSpeaker = "";
-    // 房间ID（群组通话用）
+    
+    // 群组通话相关字段（兼容旧代码）
+    private boolean isGroupCall = false;
     private String groupRoomId = "";
-    // 群组ID
     private String groupId = "";
+    
+    // ✅ 移除重复字段，统一使用 stateManager 获取状态
     
     // === 业界最佳实践组件 ===
     // 信令去重组件
@@ -118,6 +123,76 @@ public class CallingVM {
      */
     public VideoResourcePool getVideoResourcePool() {
         return resourcePool;
+    }
+    
+    // === 状态管理接口 ===
+    
+    /**
+     * 更新信令信息并重新计算状态
+     * @param signalingInfo 信令信息
+     */
+    public void updateSignalingInfo(SignalingInfo signalingInfo) {
+        stateManager.updateSignalingInfo(signalingInfo);
+        android.util.Log.d(TAG, "信令状态已更新: " + stateManager.getDebugInfo());
+    }
+    
+    /**
+     * 获取状态管理器（供内部使用）
+     */
+    public CallStateManager getStateManager() {
+        return stateManager;
+    }
+    
+    /**
+     * 是否为群组通话
+     * ✅ 统一状态入口，取代原 isGroup 和 isGroupCall
+     */
+    public boolean isGroupCall() {
+        return stateManager.isGroupCall();
+    }
+    
+    /**
+     * 是否为视频通话
+     */
+    public boolean isVideoCall() {
+        return stateManager.isVideoCall();
+    }
+    
+    /**
+     * 获取参与者数量
+     */
+    public int getParticipantCount() {
+        return stateManager.getParticipantCount();
+    }
+    
+    /**
+     * 获取群组ID（如果是群组通话）
+     */
+    public String getGroupId() {
+        return stateManager.getGroupId();
+    }
+    
+    /**
+     * 获取房间ID
+     */
+    public String getRoomId() {
+        return stateManager.getRoomId();
+    }
+    
+    /**
+     * 获取通话类型描述
+     */
+    public String getCallTypeDescription() {
+        return stateManager.getCallTypeDescription();
+    }
+    
+    /**
+     * 兼容属性：是否为群组通话
+     * @deprecated 请使用 isGroupCall() 方法
+     */
+    @Deprecated
+    public boolean isGroup() {
+        return isGroupCall();
     }
     // 群组信令监听器
     private OnGroupSignalingListener groupSignalingListener;
@@ -362,8 +437,19 @@ public class CallingVM {
                 getTokenAndConnectRoom(signalingInfo, new OnBase<SignalingCertificate>() {
                     @Override
                     public void onError(int code, String error) {
-                        Toast.makeText(BaseApp.inst(), "加入会议失败,服务器错误(" + error + ")", Toast.LENGTH_LONG).show();
-                        L.e(CallingServiceImp.TAG, error + code);
+                        LogExceptionHandler.handleException("CallingVM", "加入会议失败", LogExceptionHandler.ExceptionType.NETWORK_ERROR, null);
+                        L.e("CallingVM", "加入会议失败: " + error + ", code: " + code);
+                        
+                        String errorMsg = "加入会议失败";
+                        if (code == 10004) {
+                            errorMsg = "网络连接失败，请检查网络";
+                        } else if (code == 10001) {
+                            errorMsg = "服务器错误，请稍后重试";
+                        } else if (!TextUtils.isEmpty(error)) {
+                            errorMsg = "加入会议失败: " + error;
+                        }
+                        
+                        Toast.makeText(BaseApp.inst(), errorMsg, Toast.LENGTH_LONG).show();
                         dismissUI();
                     }
 
@@ -412,16 +498,24 @@ public class CallingVM {
             callViewModel.onCleared();
             L.e("unBindView - 包含群组通话清理");
         } catch (Exception e) {
-            android.util.Log.e("CallingVM", "unBindView清理失败: " + e.getMessage(), e);
+            LogExceptionHandler.handleException("CallingVM", "unBindView资源清理", LogExceptionHandler.ExceptionType.UNKNOWN_ERROR, e);
         }
     }
 
     public void setSpeakerphoneOn(boolean isChecked) {
-        if (callViewModel.getAudioHandler().getSelectedAudioDevice() instanceof AudioDevice.BluetoothHeadset) {
-            return;
+        try {
+            if (callViewModel.getAudioHandler().getSelectedAudioDevice() instanceof AudioDevice.BluetoothHeadset) {
+                L.d("CallingVM", "蓝牙设备已连接，跳过扬声器切换");
+                return;
+            }
+            
+            AudioDevice targetDevice = isChecked ? new AudioDevice.Speakerphone() : new AudioDevice.Earpiece();
+            callViewModel.getAudioHandler().selectDevice(targetDevice);
+            L.d("CallingVM", "音频设备切换成功: " + (isChecked ? "扬声器" : "听筒"));
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "设置扬声器状态", LogExceptionHandler.ExceptionType.UI_ERROR, e);
         }
-        callViewModel.getAudioHandler().selectDevice(isChecked ? new AudioDevice.Speakerphone()
-            : new AudioDevice.Earpiece());
     }
 
 
@@ -431,11 +525,33 @@ public class CallingVM {
 
 
     public void renewalDB(String id, OnRenewalDBListener onRenewalDBListener) {
-        BaseApp.inst().realm.executeTransactionAsync(realm -> {
-            CallHistory callHistory = realm.where(CallHistory.class).equalTo("id", id).findFirst();
-            if (null == callHistory) return;
-            onRenewalDBListener.onRenewal(realm, callHistory);
-        });
+        try {
+            if (TextUtils.isEmpty(id)) {
+                L.w("CallingVM", "renewalDB: 通话ID为空");
+                return;
+            }
+            
+            if (onRenewalDBListener == null) {
+                L.w("CallingVM", "renewalDB: 监听器为空");
+                return;
+            }
+            
+            BaseApp.inst().realm.executeTransactionAsync(realm -> {
+                try {
+                    CallHistory callHistory = realm.where(CallHistory.class).equalTo("id", id).findFirst();
+                    if (null == callHistory) {
+                        L.w("CallingVM", "renewalDB: 未找到通话记录 ID=" + id);
+                        return;
+                    }
+                    onRenewalDBListener.onRenewal(realm, callHistory);
+                    L.d("CallingVM", "renewalDB: 通话记录更新成功 ID=" + id);
+                } catch (Exception e) {
+                    LogExceptionHandler.handleException("CallingVM", "renewalDB事务执行", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
+                }
+            });
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "renewalDB数据库操作", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
+        }
     }
 
 
@@ -453,14 +569,27 @@ public class CallingVM {
 
         @Override
         public void onReceive(Context context, Intent intent) {
-            if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED.equals(intent.getAction())) { //蓝牙连接状态
-                int state = intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1);
-                if (state == BluetoothAdapter.STATE_CONNECTED) {
-                    //连接或失联，切换音频输出（到蓝牙、或者强制仍然扬声器外放）
-                    callingVM.changeToHeadset();
-                } else if (state == BluetoothAdapter.STATE_DISCONNECTED) {
-                    callingVM.changeToSpeaker();
+            try {
+                if (BluetoothAdapter.ACTION_CONNECTION_STATE_CHANGED.equals(intent.getAction())) { //蓝牙连接状态
+                    int state = intent.getIntExtra(BluetoothAdapter.EXTRA_CONNECTION_STATE, -1);
+                    
+                    LogExceptionHandler.BusinessFlow bluetoothFlow = LogExceptionHandler.BusinessFlow.start("CallingVM", "蓝牙连接状态变更");
+                    
+                    if (state == BluetoothAdapter.STATE_CONNECTED) {
+                        L.d("CallingVM", "蓝牙设备已连接，切换到蓝牙耳机");
+                        callingVM.changeToHeadset();
+                        bluetoothFlow.success();
+                    } else if (state == BluetoothAdapter.STATE_DISCONNECTED) {
+                        L.d("CallingVM", "蓝牙设备已断开，切换到扬声器");
+                        callingVM.changeToSpeaker();
+                        bluetoothFlow.success();
+                    } else {
+                        L.w("CallingVM", "未知的蓝牙状态: " + state);
+                        bluetoothFlow.failure("未知状态: " + state);
+                    }
                 }
+            } catch (Exception e) {
+                LogExceptionHandler.handleException("CallingVM", "蓝牙状态变更处理", LogExceptionHandler.ExceptionType.UNKNOWN_ERROR, e);
             }
         }
     }
@@ -469,14 +598,24 @@ public class CallingVM {
      * 切换到外放
      */
     public void changeToSpeaker() {
-        setSpeakerphoneOn(true);
+        try {
+            L.d("CallingVM", "切换到扬声器模式");
+            setSpeakerphoneOn(true);
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "切换到扬声器", LogExceptionHandler.ExceptionType.UI_ERROR, e);
+        }
     }
 
     /**
      * 切换到蓝牙音箱
      */
     public void changeToHeadset() {
-        callViewModel.getAudioHandler().selectDevice(new AudioDevice.BluetoothHeadset());
+        try {
+            L.d("CallingVM", "切换到蓝牙耳机模式");
+            callViewModel.getAudioHandler().selectDevice(new AudioDevice.BluetoothHeadset());
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "切换到蓝牙耳机", LogExceptionHandler.ExceptionType.UI_ERROR, e);
+        }
     }
 
     // ===== 群组通话扩展方法 =====
@@ -491,11 +630,12 @@ public class CallingVM {
         try {
             L.d("CallingVM", "发起群组通话 - 群组: " + groupId + ", 成员数: " + memberIds.size() + ", 视频: " + isVideo);
             
-            // 1. 设置群组通话模式
-            this.isGroupCall = true;
+            // 1. 使用统一状态管理，不再直接设置成员变量
+            // ✅ 状态将在 updateSignalingInfo() 时由 stateManager 管理
             this.isVideoCalls = isVideo;
-            this.groupId = groupId;
-            this.groupRoomId = "group_call_" + System.currentTimeMillis();
+            String groupRoomId = "group_call_" + System.currentTimeMillis();
+            
+            android.util.Log.d(TAG, "发起群组通话 - 群组: " + groupId + ", 成员数: " + memberIds.size());
             
             // 2. 初始化成员列表
             groupMembers.clear();
@@ -516,7 +656,7 @@ public class CallingVM {
             prepareGroupRoom(signaling);
             
         } catch (Exception e) {
-            android.util.Log.e("CallingVM", "发起群组通话失败: " + e.getMessage(), e);
+            LogExceptionHandler.handleException("CallingVM", "发起群组通话", LogExceptionHandler.ExceptionType.NETWORK_ERROR, e);
             handleGroupCallError("发起群组通话失败", e);
         }
     }
@@ -534,7 +674,7 @@ public class CallingVM {
             // 使用去重组件处理
             deduplicator.handleSignalingWithDeduplication(signaling, this::processGroupSignaling);
         } catch (Exception e) {
-            android.util.Log.e("CallingVM", "处理群组信令异常: " + e.getMessage(), e);
+            LogExceptionHandler.handleException("CallingVM", "处理群组信令", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
             handleGroupCallError("处理群组信令异常", e);
         }
     }
@@ -885,10 +1025,130 @@ public class CallingVM {
 
     /**
      * 处理群组通话错误
+     * 使用统一的异常处理模式，提供分类错误处理和用户友好提示
      */
     private void handleGroupCallError(String message, Exception e) {
-        android.util.Log.e("CallingVM", message + ": " + e.getMessage(), e);
-        // TODO: 实现错误处理和UI提示
+        // 使用LogExceptionHandler进行统一的异常处理
+        LogExceptionHandler.handleException(
+            "CallingVM", 
+            "group_call_error: " + message,
+            LogExceptionHandler.ExceptionType.STATE_ERROR,
+            e
+        );
+        
+        // 错误分类
+        String errorCode = "UNKNOWN_ERROR";
+        if (e != null) {
+            String exceptionName = e.getClass().getSimpleName();
+            if (exceptionName.contains("Network") || exceptionName.contains("Socket")) {
+                errorCode = "NETWORK_ERROR";
+            } else if (exceptionName.contains("Permission")) {
+                errorCode = "PERMISSION_ERROR";
+            } else if (exceptionName.contains("IllegalState")) {
+                errorCode = "INVALID_STATE";
+            } else if (exceptionName.contains("Timeout")) {
+                errorCode = "TIMEOUT_ERROR";
+            } else if (exceptionName.contains("OutOfMemory") || exceptionName.contains("Resource")) {
+                errorCode = "RESOURCE_ERROR";
+            }
+        }
+        
+        // 对应的用户提示
+        String userMessage;
+        switch (errorCode) {
+            case "NETWORK_ERROR":
+                userMessage = "网络连接异常，请检查网络后重试";
+                break;
+            case "PERMISSION_ERROR":
+                userMessage = "权限不足，请检查音视频权限设置";
+                break;
+            case "RESOURCE_ERROR":
+                userMessage = "设备资源不足，请关闭其他应用后重试";
+                break;
+            case "INVALID_STATE":
+                userMessage = "通话状态异常，请重新发起通话";
+                break;
+            case "TIMEOUT_ERROR":
+                userMessage = "连接超时，请稍后重试";
+                break;
+            default:
+                userMessage = "群组通话异常：" + message;
+        }
+        
+        // 记录关键业务流程
+        L.critical("群组通话错误", String.format(
+            "错误类型: %s, 用户提示: %s, 原始错误: %s", 
+            errorCode, userMessage, e.getMessage()
+        ));
+        
+        // 通知群组信令监听器
+        if (groupSignalingListener != null) {
+            groupSignalingListener.onError(userMessage);
+        }
+        
+        // 根据错误类型执行相应的恢复操作
+        handleErrorRecovery(errorCode, e);
+    }
+
+    /**
+     * 处理错误恢复策略
+     * 根据不同的错误类型执行相应的恢复操作
+     */
+    private void handleErrorRecovery(String errorCode, Exception originalException) {
+        try {
+            L.d("CallingVM", "开始错误恢复流程，错误类型: " + errorCode);
+            
+            switch (errorCode) {
+                case "NETWORK_ERROR":
+                    // 网络错误：尝试重连或提示用户检查网络
+                    L.i("CallingVM", "检测到网络错误，准备清理连接状态");
+                    cleanupGroupCall();
+                    break;
+                    
+                case "RESOURCE_ERROR":
+                    // 资源错误：清理资源并释放内存
+                    L.i("CallingVM", "检测到资源错误，执行资源清理");
+                    cleanupGroupVideoResources();
+                    break;
+                    
+                case "INVALID_STATE":
+                    // 状态错误：重置群组状态
+                    L.i("CallingVM", "检测到状态错误，重置群组通话状态");
+                    isGroupCall = false;
+                    groupMembers.clear();
+                    currentSpeaker = "";
+                    groupRoomId = "";
+                    groupId = "";
+                    break;
+                    
+                case "TIMEOUT_ERROR":
+                    // 超时错误：记录状态并准备重试
+                    L.i("CallingVM", "检测到超时错误，记录当前状态");
+                    L.stateChange("group_call_timeout", "超时前", "状态: " + isGroupCall + ", 成员数: " + groupMembers.size());
+                    break;
+                    
+                case "PERMISSION_ERROR":
+                    // 权限错误：提示用户检查权限，不执行自动恢复
+                    L.w("CallingVM", "权限错误，需要用户手动处理");
+                    break;
+                    
+                default:
+                    // 未知错误：执行通用清理
+                    L.w("CallingVM", "未知错误类型，执行通用清理操作");
+                    cleanupGroupCall();
+            }
+            
+            L.d("CallingVM", "错误恢复流程完成，错误类型: " + errorCode);
+            
+        } catch (Exception recoveryException) {
+            // 恢复过程中出现异常，使用LogExceptionHandler处理
+            LogExceptionHandler.handleException(
+                "CallingVM",
+                "error_recovery_failed: 错误恢复过程中出现异常，原始错误类型: " + errorCode,
+                LogExceptionHandler.ExceptionType.STATE_ERROR,
+                recoveryException
+            );
+        }
     }
 
     /**
@@ -905,13 +1165,19 @@ public class CallingVM {
      */
     public void cleanupGroupCall() {
         try {
-            android.util.Log.d("CallingVM", "清理群组通话资源");
+            L.d("CallingVM", "开始清理群组通话资源");
             
             // 清理信令去重器
-            deduplicator.clearAll();
+            if (deduplicator != null) {
+                deduplicator.clearAll();
+                L.d("CallingVM", "信令去重器清理完成");
+            }
             
             // 清理视频资源池
-            resourcePool.cleanup();
+            if (resourcePool != null) {
+                resourcePool.cleanup();
+                L.d("CallingVM", "视频资源池清理完成");
+            }
             
             // 重置群组状态
             isGroupCall = false;
@@ -920,8 +1186,15 @@ public class CallingVM {
             groupRoomId = "";
             groupId = "";
             
+            L.stateChange("group_call_cleanup", "进行中", "已清理");
+            
         } catch (Exception e) {
-            android.util.Log.e("CallingVM", "清理群组通话资源失败: " + e.getMessage(), e);
+            LogExceptionHandler.handleException(
+                "CallingVM",
+                "清理群组通话资源失败",
+                LogExceptionHandler.ExceptionType.STATE_ERROR,
+                e
+            );
         }
     }
     
@@ -931,21 +1204,30 @@ public class CallingVM {
      */
     public void cleanupGroupVideoResources() {
         try {
-            android.util.Log.d("CallingVM", "清理群组视频资源 - 信号驱动模式");
+            L.d("CallingVM", "开始清理群组视频资源 - 信号驱动模式");
             
             // 通过CallViewModel清理视频资源，而不直接操作LiveKit API
             if (callViewModel != null) {
                 // 视频资源清理由MultiStreamManager处理
                 callViewModel.release();
+                L.d("CallingVM", "CallViewModel视频资源清理完成");
             }
             
             // 清理本地视频资源池
             if (resourcePool != null) {
                 resourcePool.cleanup();
+                L.d("CallingVM", "本地视频资源池清理完成");
             }
             
+            L.stateChange("group_video_cleanup", "进行中", "已清理");
+            
         } catch (Exception e) {
-            android.util.Log.e("CallingVM", "清理群组视频资源失败: " + e.getMessage(), e);
+            LogExceptionHandler.handleException(
+                "CallingVM",
+                "清理群组视频资源失败",
+                LogExceptionHandler.ExceptionType.STATE_ERROR,
+                e
+            );
         }
     }
 
@@ -972,10 +1254,6 @@ public class CallingVM {
     }
 
     // === Getters for group call ===
-    public boolean isGroupCall() {
-        return isGroupCall;
-    }
-
     public List<GroupCallMember> getGroupMembers() {
         return new ArrayList<>(groupMembers);
     }

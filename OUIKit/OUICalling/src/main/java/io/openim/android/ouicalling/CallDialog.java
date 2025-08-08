@@ -38,6 +38,7 @@ import io.openim.android.ouicalling.entity.StreamStatistics;
 import io.openim.android.ouicalling.entity.PerformanceSummary;
 import io.openim.android.ouicalling.utils.VideoResourcePool;
 import io.openim.android.ouicalling.helper.GroupCallViewHelper;
+import io.openim.android.ouicalling.state.DialogSwitchStateMachine;
 import io.openim.android.ouicalling.vm.CallingVM;
 import io.openim.android.ouicore.base.BaseApp;
 import io.openim.android.ouicore.base.BaseDialog;
@@ -51,6 +52,8 @@ import io.openim.android.ouicore.utils.MediaPlayerUtil;
 import io.openim.android.ouicore.utils.NotificationUtil;
 import io.openim.android.ouicore.utils.Obs;
 import io.openim.android.ouicore.utils.OnDedrepClickListener;
+import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.sdk.OpenIMClient;
 import io.openim.android.sdk.enums.ConversationType;
 import io.openim.android.sdk.listener.OnBase;
@@ -73,6 +76,9 @@ public class CallDialog extends BaseDialog {
     private boolean isGroupCall = false; // 是否群组通话
     private Handler updateHandler; // 用于定时更新的Handler
     private Runnable updateTask; // 更新任务
+    
+    // === 延迟切换优化 ===
+    private DialogSwitchStateMachine switchStateMachine;
     public CallingVM callingVM;
     protected SignalingInfo signalingInfo;
 
@@ -107,8 +113,126 @@ public class CallDialog extends BaseDialog {
             return null;
         }, callingVM.scope);
 
+        initSwitchStateMachine();
         initView();
         initRendererView();
+    }
+    
+    /**
+     * 初始化延迟切换状态机
+     */
+    private void initSwitchStateMachine() {
+        switchStateMachine = new DialogSwitchStateMachine();
+        switchStateMachine.setListener(new DialogSwitchStateMachine.SwitchStateListener() {
+            @Override
+            public void onReadyToSwitch() {
+                L.critical("CallDialog", "数据就绪，开始切换UI");
+                performGroupUISwitch();
+            }
+            
+            @Override
+            public void onSwitchCompleted() {
+                L.businessFlow("CallDialog", "群组UI切换", "切换完成");
+                // ✅ 简化：专注核心切换完成逻辑
+            }
+            
+            @Override
+            public void onSwitchFailed(String reason) {
+                LogExceptionHandler.handleException("CallDialog", "群组UI切换失败", LogExceptionHandler.ExceptionType.UI_ERROR, null);
+                L.w("CallDialog", "切换失败原因: " + reason + ", 回退到单人模式");
+                Toast.makeText(context, "群组通话加载失败，使用单人模式", Toast.LENGTH_SHORT).show();
+            }
+            
+            @Override
+            public void onStateChanged(DialogSwitchStateMachine.SwitchState oldState, DialogSwitchStateMachine.SwitchState newState) {
+                L.stateChange("CallDialog", oldState.getDescription(), newState.getDescription());
+            }
+        });
+    }
+    
+    /**
+     * 启动延迟群组切换流程
+     */
+    private void startDelayedGroupSwitch() {
+        L.businessFlow("CallDialog", "延迟群组切换", "流程开始");
+        
+        // 启动状态机
+        switchStateMachine.startSwitch();
+        
+        // 通知信令数据就绪（已经有了）
+        switchStateMachine.notifySignalingReady();
+        
+        // UI已经准备就绪（对话框已经显示）
+        switchStateMachine.notifyUIReady();
+        
+        // 异步加载成员数据
+        loadGroupMembersAsync();
+        
+        // 启动超时检查
+        startSwitchTimeoutCheck();
+    }
+    
+    /**
+     * 异步加载群组成员数据
+     */
+    private void loadGroupMembersAsync() {
+        L.d("CallDialog", "开始异步加载群组成员数据");
+        
+        // 模拟异步加载过程
+        new Handler().postDelayed(() -> {
+            try {
+                // 检查是否已经取消或失败
+                if (switchStateMachine.getCurrentState() == DialogSwitchStateMachine.SwitchState.FAILED) {
+                    L.w("CallDialog", "切换已失败，取消成员数据加载");
+                    return;
+                }
+                
+                // 模拟成员数据加载（实际应该是从 CallingVM 获取）
+                int memberCount = callingVM.getParticipantCount();
+                
+                if (memberCount > 1) {
+                    L.businessFlow("CallDialog", "成员数据加载", "完成，成员数: " + memberCount);
+                    switchStateMachine.notifyMembersReady();
+                } else {
+                    L.w("CallDialog", "成员数不足，不适合群组模式: " + memberCount);
+                    switchStateMachine.notifySwitchFailed("成员数不足");
+                }
+                
+            } catch (Exception e) {
+                LogExceptionHandler.handleException("CallDialog", "加载群组成员数据", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
+                switchStateMachine.notifySwitchFailed("成员数据加载失败: " + e.getMessage());
+            }
+        }, 500); // 模拟500ms加载时间
+    }
+    
+    /**
+     * 执行群组UI切换（数据就绪后调用）
+     */
+    private void performGroupUISwitch() {
+        try {
+            android.util.Log.d("CallDialog", "开始执行UI切换到群组模式");
+            
+            // 调用原有的切换逻辑
+            switchToGroupCallModeInternal();
+            
+            // 通知状态机切换完成
+            switchStateMachine.notifySwitchCompleted();
+            
+        } catch (Exception e) {
+            android.util.Log.e("CallDialog", "UI切换失败", e);
+            switchStateMachine.notifySwitchFailed("UI切换异常: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 启动超时检查
+     */
+    private void startSwitchTimeoutCheck() {
+        new Handler().postDelayed(() -> {
+            if (switchStateMachine.checkTimeout()) {
+                android.util.Log.w("CallDialog", "群组切换超时，回退到单人模式");
+            }
+        }, 6000); // 6秒超时
     }
 
     public void initRendererView() {
@@ -154,15 +278,22 @@ public class CallDialog extends BaseDialog {
     }
     
     /**
-     * 切换到群组通话模式
+     * 切换到群组通话模式（内部实现）
+     * ✅ 重命名以区分新旧实现
      */
-    private void switchToGroupCallMode() {
-        if (isGroupCall) return; // 已经是群组模式
+    private void switchToGroupCallModeInternal() {
+        L.d("CallDialog", "switchToGroupCallModeInternal() 调用，当前isGroupCall = " + isGroupCall);
+        if (isGroupCall) {
+            L.d("CallDialog", "已经是群组模式，跳过切换");
+            return; // 已经是群组模式
+        }
         
+        L.businessFlow("CallDialog", "群组模式切换", "开始切换...");
         isGroupCall = true;
         groupView = getLayoutInflater().inflate(R.layout.dialog_group_call, null);
         groupViewHelper = new GroupCallViewHelper(groupView);
         setContentView(groupView);
+        L.d("CallDialog", "群组布局加载完成，设置为内容视图");
         
         // 重新设置窗口属性
         Window window = getWindow();
@@ -257,51 +388,14 @@ public class CallDialog extends BaseDialog {
             if (callingVM.callViewModel.getAllGroupParticipants() != null) {
                 StreamStatistics streamStats = callingVM.callViewModel.getStreamStatistics();
                 
-                android.util.Log.d("CallDialog", "refreshGroupVideoBindings: MultiStream Status - " + 
-                    "Total: " + streamStats.getTotalStreams() + 
-                    ", Active: " + streamStats.getActiveStreams() + 
-                    ", High Priority: " + streamStats.getHighPriorityStreams());
+                L.d("CallDialog", "refreshGroupVideoBindings: 群组视频绑定已刷新");
             }
         } catch (Exception e) {
-            android.util.Log.e("CallDialog", "Error refreshing group video bindings", e);
+            LogExceptionHandler.handleException("CallDialog", "刷新群组视频绑定", LogExceptionHandler.ExceptionType.UI_ERROR, e);
         }
     }
     
-    /**
-     * Week 2 Day 6: 开始性能监控
-     */
-    private void startPerformanceMonitoring() {
-        if (callingVM != null && callingVM.callViewModel != null && isGroupCall) {
-            try {
-                callingVM.callViewModel.startPerformanceMonitoring();
-                android.util.Log.d("CallDialog", "Performance monitoring started for group call");
-            } catch (Exception e) {
-                android.util.Log.e("CallDialog", "Error starting performance monitoring", e);
-            }
-        }
-    }
-    
-    /**
-     * Week 2 Day 6: 停止性能监控
-     */
-    private void stopPerformanceMonitoring() {
-        if (callingVM != null && callingVM.callViewModel != null) {
-            try {
-                callingVM.callViewModel.stopPerformanceMonitoring();
-                
-                // 输出性能摘要
-                PerformanceSummary summary = callingVM.callViewModel.getPerformanceSummary();
-                android.util.Log.i("CallDialog", "Performance Summary - " +
-                    "Duration: " + (summary.getMonitoringDurationMs() / 1000) + "s, " +
-                    "Frames: " + summary.getTotalFramesRendered() + ", " +
-                    "Quality switches: " + summary.getTotalQualitySwitches() + ", " +
-                    "Priority switches: " + summary.getTotalPrioritySwitches());
-                    
-            } catch (Exception e) {
-                android.util.Log.e("CallDialog", "Error stopping performance monitoring", e);
-            }
-        }
-    }
+    // ✅ 简化：移除复杂的性能监控方法，专注核心功能实现
     
     /**
      * 根据成员数量计算网格列数
@@ -315,7 +409,6 @@ public class CallDialog extends BaseDialog {
     
     /**
      * 设置群组成员更新任务
-     * Week 2 Day 6: 集成性能监控
      */
     private void setupGroupMemberUpdateTask() {
         if (updateHandler == null) {
@@ -325,8 +418,7 @@ public class CallDialog extends BaseDialog {
         // 清理之前的任务
         clearUpdateTask();
         
-        // Week 2 Day 6: 开始性能监控
-        startPerformanceMonitoring();
+        // ✅ 简化：专注核心成员更新功能
         
         updateTask = new Runnable() {
             @Override
@@ -343,7 +435,6 @@ public class CallDialog extends BaseDialog {
     
     /**
      * 清理更新任务防止内存泄漏
-     * Week 2 Day 6: 同时停止性能监控
      */
     private void clearUpdateTask() {
         if (updateHandler != null && updateTask != null) {
@@ -351,8 +442,7 @@ public class CallDialog extends BaseDialog {
             updateTask = null;
         }
         
-        // Week 2 Day 6: 停止性能监控
-        stopPerformanceMonitoring();
+        // ✅ 简化：专注核心任务清理功能
     }
     
     /**
@@ -404,12 +494,25 @@ public class CallDialog extends BaseDialog {
 
     public void bindData(SignalingInfo signalingInfo) {
         this.signalingInfo = signalingInfo;
-        callingVM.isGroup =
-            signalingInfo.getInvitation().getSessionType() != ConversationType.SINGLE_CHAT;
+        // 🔍 关键调试：记录信令信息
+        L.businessFlow("CallDialog", "bindData", "开始绑定数据");
+        L.d("CallDialog", "SessionType: " + L.safeToString(signalingInfo.getInvitation().getSessionType()));
+        L.d("CallDialog", "GroupID: " + L.safeToString(signalingInfo.getInvitation().getGroupID()));
+        L.d("CallDialog", "InviteeList: " + L.safeToString(signalingInfo.getInvitation().getInviteeUserIDList()));
         
-        // 检测是否为群组通话并切换UI模式
-        if (callingVM.isGroup) {
-            switchToGroupCallMode();
+        // ✅ 使用统一状态管理，不再直接设置 isGroup
+        // 更新信令信息到状态管理器
+        callingVM.updateSignalingInfo(signalingInfo);
+        
+        boolean isGroupFromState = callingVM.isGroupCall();
+        L.d("CallDialog", "计算 isGroupCall = " + isGroupFromState + ", stateManager: " + callingVM.getCallTypeDescription());
+        
+        // 检测是否为群组通话并启动延迟切换流程
+        if (isGroupFromState) {
+            L.businessFlow("CallDialog", "群组通话检测", "启动延迟切换流程");
+            startDelayedGroupSwitch();
+        } else {
+            L.d("CallDialog", "保持单人通话模式");
         }
         
         callingVM.setVideoCalls(Constants.MediaType.VIDEO.equals(signalingInfo.getInvitation().getMediaType()));
@@ -504,7 +607,7 @@ public class CallDialog extends BaseDialog {
                 bindSingleCallUserInfo(signalingInfo);
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            LogExceptionHandler.handleException("CallDialog", "绑定用户信息", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
         }
     }
     
@@ -520,6 +623,8 @@ public class CallDialog extends BaseDialog {
         OpenIMClient.getInstance().userInfoManager.getUsersInfo(new OnBase<List<PublicUserInfo>>() {
             @Override
             public void onError(int code, String error) {
+                LogExceptionHandler.handleException("CallDialog", "获取用户信息失败", LogExceptionHandler.ExceptionType.NETWORK_ERROR, null);
+                L.e("CallDialog", "获取用户信息失败: " + error + ", code: " + code);
                 Toast.makeText(context, error + code, Toast.LENGTH_SHORT).show();
             }
 
@@ -998,7 +1103,7 @@ public class CallDialog extends BaseDialog {
     }
 
     private void insertChatHistory() {
-        boolean isGroup = callingVM.isGroup;
+        boolean isGroup = callingVM.isGroupCall(); // ✅ 使用统一状态管理
         if (!isShowing() || isGroup || (null != signalingInfo && TextUtils.isEmpty(callingVM.buildPrimaryKey(signalingInfo))))
             return;
         String id = callingVM.buildPrimaryKey(signalingInfo);
