@@ -107,6 +107,9 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
     
     // 群组成员选择的ActivityResultLauncher
     private ActivityResultLauncher<Intent> groupMemberSelectionLauncher;
+    
+    // 防止重复启动成员选择的状态标记
+    private boolean isGroupMemberSelectionActive = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -506,6 +509,9 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
                 try {
                     L.d("ChatActivity", "成员选择返回，resultCode=" + result.getResultCode());
                     
+                    // 重置状态标记，允许下次启动
+                    isGroupMemberSelectionActive = false;
+                    
                     if (result.getResultCode() == RESULT_CANCELED) {
                         L.d("ChatActivity", "用户取消了成员选择");
                         return;
@@ -555,6 +561,9 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
                     vm.onGroupMembersSelected(selectedMemberIds, isVideo);
                     
                 } catch (Exception e) {
+                    // 异常时也重置状态标记
+                    isGroupMemberSelectionActive = false;
+                    
                     LogExceptionHandler.handleException("ChatActivity", "处理成员选择结果", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
                     Toast.makeText(this, "处理选择结果失败，请重试", Toast.LENGTH_SHORT).show();
                 }
@@ -564,6 +573,13 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
     
     @Override
     public void showGroupMemberSelection(String groupId, boolean isVideo) {
+        // 防止重复启动检查
+        if (isGroupMemberSelectionActive) {
+            L.w("ChatActivity", "成员选择已在进行中，忽略重复请求");
+            Toast.makeText(this, "成员选择已在进行中", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
         // 参数校验
         if (TextUtils.isEmpty(groupId)) {
             LogExceptionHandler.handleException("ChatActivity", "群组ID为空", LogExceptionHandler.ExceptionType.DATA_ERROR, null);
@@ -587,10 +603,16 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
             intent.putExtra(Constants.K_SIZE, CallingConfig.MAX_GROUP_CALL_MEMBERS); // 最多选择成员数（不包含发起者）
             intent.putExtra(Constants.K_NAME, "选择通话成员");
             
+            // 设置状态标记，防止重复启动
+            isGroupMemberSelectionActive = true;
+            
             groupMemberSelectionLauncher.launch(intent);
             L.businessFlow("ChatActivity", "群组成员选择", "启动，groupId=" + groupId + ", 类型=" + (isVideo ? "视频" : "音频"));
             
         } catch (Exception e) {
+            // 异常时也重置状态标记
+            isGroupMemberSelectionActive = false;
+            
             LogExceptionHandler.handleException("ChatActivity", "启动成员选择失败", LogExceptionHandler.ExceptionType.UI_ERROR, e);
             Toast.makeText(this, "启动选择界面失败，请重试", Toast.LENGTH_SHORT).show();
         }
@@ -612,16 +634,8 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
             }
         }
         
-        try {
-            // 通过ARouter获取InitiateGroupActivity的Class
-            Object result = ARouter.getInstance().build(Routes.Group.CREATE_GROUP).navigation();
-            if (result != null) {
-                return result.getClass();
-            }
-            L.w("ChatActivity", "ARouter返回null，尝试反射方式");
-        } catch (Exception e) {
-            L.w("ChatActivity", "ARouter获取Activity失败: " + e.getMessage());
-        }
+        // 优先使用反射方式获取Class，避免 ARouter.navigation() 的错误用法
+        L.d("ChatActivity", "优先使用反射方式获取Activity类");
         
         // 如果ARouter失败，使用反射获取
         try {
