@@ -49,14 +49,14 @@ public abstract class BaseCallDialog extends BaseDialog {
         callingVM = new CallingVM(callingService, isCallOut);
         callingVM.setDismissListener(v -> dismiss());
         
+        // 必须在setContentView之前设置窗口属性
+        setupWindowAttributes();
+        
         // 初始化悬浮窗布局
         initFloatViewBinding();
         
-        // 子类实现具体的UI初始化
+        // 子类实现具体的UI初始化（这里会调用setContentView）
         initSpecificView();
-        
-        // 设置通用窗口属性
-        setupWindowAttributes();
     }
     
     /**
