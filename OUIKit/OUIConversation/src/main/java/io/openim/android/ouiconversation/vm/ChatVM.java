@@ -872,7 +872,27 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
 
     @Override
     public void onRecvMessageRevokedV2(RevokedInfo info) {
-
+        L.d("Received message revoked: " + info.getClientMsgID());
+        
+        // 查找并更新被撤回的消息
+        List<Message> messageList = messages.getValue();
+        for (int i = 0; i < messageList.size(); i++) {
+            Message message = messageList.get(i);
+            if (message.getClientMsgID().equals(info.getClientMsgID())) {
+                // 更新消息内容为撤回状态
+                message.setContentType(MessageType.REVOKE_MESSAGE_NTF);
+                // 创建撤回消息的TextElem
+                TextElem textElem = new TextElem();
+                textElem.setContent(info.getRevokerNickname() + " 撤回了一条消息");
+                message.setTextElem(textElem);
+                
+                // 通知适配器更新UI
+                if (messageAdapter != null) {
+                    messageAdapter.notifyItemChanged(i);
+                }
+                break;
+            }
+        }
     }
 
     public void deleteMessageFromLocalStorage(Message message) {
@@ -1127,8 +1147,23 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
      * @param message
      */
     public void revokeMessage(Message message) {
-        OpenIMClient.getInstance().messageManager.revokeMessageV2(new IMUtil.IMCallBack<>(),
-            conversationID, message.getClientMsgID());
+        OpenIMClient.getInstance().messageManager.revokeMessageV2(new IMUtil.IMCallBack<String>() {
+            @Override
+            public void onSuccess(String data) {
+                // 撤回成功，通常SDK会自动触发消息更新回调
+                L.d("Message revoked successfully: " + message.getClientMsgID());
+            }
+
+            @Override
+            public void onError(int code, String error) {
+                // 撤回失败，显示错误信息
+                String errorMsg = "撤回失败: " + error + "(" + code + ")";
+                L.e(errorMsg);
+                if (getIView() != null) {
+                    getIView().toast(errorMsg);
+                }
+            }
+        }, conversationID, message.getClientMsgID());
     }
 
     @Override
