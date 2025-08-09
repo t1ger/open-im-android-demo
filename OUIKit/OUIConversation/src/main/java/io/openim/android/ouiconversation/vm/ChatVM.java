@@ -874,24 +874,46 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
     public void onRecvMessageRevokedV2(RevokedInfo info) {
         L.d("Received message revoked: " + info.getClientMsgID());
         
-        // 查找并更新被撤回的消息
-        List<Message> messageList = messages.getValue();
-        for (int i = 0; i < messageList.size(); i++) {
-            Message message = messageList.get(i);
-            if (message.getClientMsgID().equals(info.getClientMsgID())) {
-                // 更新消息内容为撤回状态
-                message.setContentType(MessageType.REVOKE_MESSAGE_NTF);
-                // 创建撤回消息的TextElem
-                TextElem textElem = new TextElem();
-                textElem.setContent(info.getRevokerNickname() + " 撤回了一条消息");
-                message.setTextElem(textElem);
-                
-                // 通知适配器更新UI
-                if (messageAdapter != null) {
-                    messageAdapter.notifyItemChanged(i);
+        try {
+            // 查找并更新被撤回的消息
+            List<Message> messageList = messages.getValue();
+            if (messageList == null) return;
+            
+            for (Message message : messageList) {
+                if (message.getClientMsgID().equals(info.getClientMsgID())) {
+                    // 更新消息类型为撤回通知
+                    message.setContentType(MessageType.REVOKE_MESSAGE_NTF);
+                    
+                    // 根据撤回者身份生成不同的提示文本
+                    String txt, target;
+                    CharSequence tips;
+                    
+                    if (info.getRevokerID().equals(info.getSourceMessageSendID())) {
+                        // 情况1：撤回者就是消息发送者本人（自己撤回自己的消息）
+                        txt = String.format(BaseApp.inst().getString(io.openim.android.ouicore.R.string.revoke_tips), 
+                            target = IMUtil.getSelfName(info.getRevokerID(), info.getRevokerNickname()));
+                        tips = IMUtil.getSingleSequence(message.getGroupID(), target, info.getRevokerID(), txt);
+                    } else {
+                        // 情况2：撤回者不是消息发送者（管理员撤回别人的消息）
+                        txt = String.format(BaseApp.inst().getString(io.openim.android.ouicore.R.string.revoke_tips2), 
+                            IMUtil.getSelfName(info.getRevokerID(), info.getRevokerNickname()), 
+                            info.getSourceMessageSenderNickname());
+                        tips = IMUtil.twoPeopleRevoker(message, info, txt);
+                    }
+                    
+                    // 将提示文本设置到MsgExpand中
+                    ((MsgExpand) message.getExt()).tips = tips;
+                    
+                    // 通知适配器更新UI
+                    if (messageAdapter != null) {
+                        messageAdapter.notifyItemChanged(messages.getValue().indexOf(message));
+                    }
+                    break;
                 }
-                break;
             }
+        } catch (Exception e) {
+            L.e("Error handling message revoked: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
