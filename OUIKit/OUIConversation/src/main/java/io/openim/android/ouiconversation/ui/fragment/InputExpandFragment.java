@@ -283,6 +283,12 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
      * 显示位置选择器
      */
     private void showLocationPicker() {
+        // 检查地图key是否配置
+        if (TextUtils.isEmpty(WebViewActivity.mapAppKey)) {
+            Toast.makeText(getContext(), "请配置地图key", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        
         try {
             Intent intent = new Intent(getActivity(), WebViewActivity.class);
             intent.putExtra(WebViewActivity.ACTION, WebViewActivity.LOCATION);
@@ -299,9 +305,10 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
     private void showContactCardPicker() {
         try {
             ARouter.getInstance()
-                .build(Routes.Contact.ALL_FRIEND)
-                .withBoolean("isSelect", true)
-                .navigation(getActivity(), 1002);
+                .build(Routes.Contact.FORWARD)
+                .navigation(getActivity(), (context, postcard) -> {
+                    contactCardLauncher.launch(new Intent(getActivity(), postcard.getDestination()));
+                });
         } catch (Exception e) {
             L.e("showContactCardPicker error: " + e.getMessage());
             Toast.makeText(getContext(), "联系人选择器启动失败", Toast.LENGTH_SHORT).show();
@@ -344,8 +351,26 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             if (uri != null) {
                 String filePath = GetFilePathFromUri.getFileAbsolutePath(getActivity(), uri);
                 if (!TextUtils.isEmpty(filePath)) {
-                    Message msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(filePath, new File(filePath).getName());
-                    vm.sendMsg(msg);
+                    Message msg = null;
+                    
+                    // 根据文件类型创建对应的消息
+                    if (MediaFileUtil.isImageType(filePath)) {
+                        // 图片文件使用图片消息
+                        msg = OpenIMClient.getInstance().messageManager.createImageMessageFromFullPath(filePath);
+                    } else if (MediaFileUtil.isVideoType(filePath)) {
+                        // 视频文件使用视频消息
+                        String firstFame = MediaFileUtil.saveBitmap(null, Constants.PICTURE_DIR, false);
+                        long duration = MediaFileUtil.getDuration(filePath) / 1000;
+                        msg = OpenIMClient.getInstance().messageManager.createVideoMessageFromFullPath(
+                            filePath, MediaFileUtil.getFileType(filePath).mimeType, duration, firstFame);
+                    } else {
+                        // 其他文件使用文件消息
+                        msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(filePath, new File(filePath).getName());
+                    }
+                    
+                    if (msg != null) {
+                        vm.sendMsg(msg);
+                    }
                 }
             }
         } catch (Exception e) {
@@ -375,14 +400,46 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
      */
     private void handleContactCardResult(Intent data) {
         try {
-            // 从 AllFriendActivity 返回的联系人信息
-            String userID = data.getStringExtra("userID");
-            if (!TextUtils.isEmpty(userID)) {
-                // TODO: 创建名片消息
-                Toast.makeText(getContext(), "名片功能待完善", Toast.LENGTH_SHORT).show();
+            // 从 ForwardToActivity 返回的联系人信息
+            String userID = data.getStringExtra(Constants.K_ID);
+            String userName = data.getStringExtra(Constants.K_NAME);
+            
+            if (!TextUtils.isEmpty(userID) && !TextUtils.isEmpty(userName)) {
+                // 显示确认对话框，问是否发送当前联系人信息
+                CommonDialog dialog = new CommonDialog(getActivity());
+                dialog.getMainView().tips.setText("确认发送 " + userName + " 的名片吗？");
+                dialog.getMainView().cancel.setOnClickListener(v -> dialog.dismiss());
+                dialog.getMainView().confirm.setOnClickListener(v -> {
+                    dialog.dismiss();
+                    sendContactCard(userID, userName);
+                });
+                dialog.show();
             }
         } catch (Exception e) {
             L.e("handleContactCardResult error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 发送联系人名片
+     */
+    private void sendContactCard(String userID, String userName) {
+        try {
+            // 创建名片数据
+            CardElem cardElem = new CardElem();
+            cardElem.setUserID(userID);
+            cardElem.setNickname(userName);
+            
+            // 使用自定义消息发送名片
+            String cardData = "{\"userID\":\"" + userID + "\",\"nickname\":\"" + userName + "\"}";
+            Message cardMsg = OpenIMClient.getInstance().messageManager.createCustomMessage(
+                cardData, "名片", "{\"type\":\"business_card\"}");
+                
+            vm.sendMsg(cardMsg);
+            Toast.makeText(getContext(), "名片发送成功", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            L.e("sendContactCard error: " + e.getMessage());
+            Toast.makeText(getContext(), "名片发送失败", Toast.LENGTH_SHORT).show();
         }
     }
 
