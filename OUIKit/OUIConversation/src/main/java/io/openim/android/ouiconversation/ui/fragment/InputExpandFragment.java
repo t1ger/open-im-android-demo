@@ -3,6 +3,7 @@ package io.openim.android.ouiconversation.ui.fragment;
 
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -427,11 +428,38 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             String userName = data.getStringExtra(Constants.K_NAME);
             
             if (!TextUtils.isEmpty(userID) && !TextUtils.isEmpty(userName)) {
-                // 直接发送名片，ForwardToActivity已经有确认机制
-                sendContactCard(userID, userName);
+                // 显示确认对话框，符合业界标准
+                showCardSendConfirmDialog(userID, userName);
             }
         } catch (Exception e) {
             L.e("handleContactCardResult error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 显示名片发送确认对话框（业界标准）
+     */
+    private void showCardSendConfirmDialog(String userID, String userName) {
+        try {
+            AlertDialog.Builder builder = new AlertDialog.Builder(getContext());
+            builder.setTitle("发送名片");
+            builder.setMessage("确定将" + userName + "的名片发送到本聊天？");
+            
+            builder.setPositiveButton("确定", (dialog, which) -> {
+                sendContactCard(userID, userName);
+                dialog.dismiss();
+            });
+            
+            builder.setNegativeButton("取消", (dialog, which) -> {
+                dialog.dismiss();
+            });
+            
+            AlertDialog dialog = builder.create();
+            dialog.show();
+        } catch (Exception e) {
+            L.e("showCardSendConfirmDialog error: " + e.getMessage());
+            // 异常情况下直接发送
+            sendContactCard(userID, userName);
         }
     }
     
