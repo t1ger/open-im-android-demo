@@ -10,7 +10,6 @@ import android.graphics.Bitmap;
 import android.hardware.camera2.CameraManager;
 import android.net.Uri;
 import android.os.Bundle;
-
 import android.text.TextUtils;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -69,16 +68,35 @@ import io.openim.android.sdk.OpenIMClient;
 import io.openim.android.sdk.models.CardElem;
 import io.openim.android.sdk.models.Message;
 
+import java.io.File;
+
 public class InputExpandFragment extends BaseFragment<ChatVM> {
     public static List<Integer> menuIcons =
-        Arrays.asList(io.openim.android.ouicore.R.mipmap.ic_chat_photo, io.openim.android.ouicore.R.mipmap.ic_tools_video_call);
+        Arrays.asList(
+            io.openim.android.ouicore.R.mipmap.ic_chat_photo,     // 相册
+            io.openim.android.ouiconversation.R.mipmap.ic_chat_shoot,      // 拍摄  
+            io.openim.android.ouiconversation.R.mipmap.ic_chat_menu_file,  // 文件
+            io.openim.android.ouiconversation.R.mipmap.ic_chat_location,   // 位置
+            io.openim.android.ouiconversation.R.mipmap.ic_business_card     // 名片
+        );
     public static List<String> menuTitles =
-        Arrays.asList(BaseApp.inst().getString(io.openim.android.ouicore.R.string.album),
-            BaseApp.inst().getString(io.openim.android.ouicore.R.string.video_calls));
+        Arrays.asList(
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.album),
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.shoot),
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.file),
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.location),
+            BaseApp.inst().getString(io.openim.android.ouicore.R.string.business_card)
+        );
 
     FragmentInputExpandBinding v;
     // permissions
     private HasPermissions hasStorage;
+    
+    // ActivityResultLaunchers for different features
+    private ActivityResultLauncher<Intent> shootLauncher;
+    private ActivityResultLauncher<Intent> fileLauncher;
+    private ActivityResultLauncher<Intent> contactCardLauncher;
+    private ActivityResultLauncher<Intent> locationLauncher;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -86,6 +104,7 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
         MThreadTool.executorService.execute(() -> {
             hasStorage = new HasPermissions(getActivity(), Permission.MANAGE_EXTERNAL_STORAGE);
         });
+        initActivityResultLaunchers();
     }
 
     @Override
@@ -114,11 +133,20 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                     holder.v.menu.setText(menuTitles.get(position));
                     holder.v.menu.setOnClickListener(v -> {
                         switch (position) {
-                            case 0:
+                            case 0: // 相册
                                 showMediaPicker();
                                 break;
-                            case 1:
-                                goToCall();
+                            case 1: // 拍摄
+                                showCameraCapture();
+                                break;
+                            case 2: // 文件
+                                showFilePicker();
+                                break;
+                            case 3: // 位置
+                                showLocationPicker();
+                                break;
+                            case 4: // 名片
+                                showContactCardPicker();
                                 break;
                         }
                     });
@@ -184,13 +212,177 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
         });
     }
 
-    private void goToCall() {
-        CallingService callingService =
-            (CallingService) ARouter.getInstance().build(Routes.Service.CALLING).navigation();
-        if (null == callingService) return;
-        ChatActivity activity = (ChatActivity) getActivity();
-        if (null != activity) {
-            activity.goToCall();
+    /**
+     * 初始化所有ActivityResultLauncher
+     */
+    private void initActivityResultLaunchers() {
+        // 拍摄功能launcher
+        shootLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                handleShootResult(result.getData());
+            }
+        });
+        
+        // 文件选择launcher
+        fileLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                handleFileResult(result.getData());
+            }
+        });
+        
+        // 联系人名片选择launcher
+        contactCardLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                handleContactCardResult(result.getData());
+            }
+        });
+        
+        // 位置选择launcher
+        locationLauncher = registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+            if (result.getResultCode() == Activity.RESULT_OK && result.getData() != null) {
+                handleLocationResult(result.getData());
+            }
+        });
+    }
+
+    /**
+     * 显示相机拍摄界面
+     */
+    private void showCameraCapture() {
+        hasStorage.safeGo(() -> {
+            try {
+                Intent intent = new Intent(getActivity(), ShootActivity.class);
+                intent.putExtra(Constants.K_RESULT, com.cjt2325.cameralibrary.JCameraView.BUTTON_STATE_BOTH);
+                shootLauncher.launch(intent);
+            } catch (Exception e) {
+                L.e("showCameraCapture error: " + e.getMessage());
+                Toast.makeText(getContext(), "相机启动失败", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /**
+     * 显示文件选择器
+     */
+    private void showFilePicker() {
+        hasStorage.safeGo(() -> {
+            try {
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.setType("*/*");
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.putExtra(Intent.EXTRA_ALLOW_MULTIPLE, false);
+                fileLauncher.launch(Intent.createChooser(intent, "选择文件"));
+            } catch (Exception e) {
+                L.e("showFilePicker error: " + e.getMessage());
+                Toast.makeText(getContext(), "文件选择器启动失败", Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    /**
+     * 显示位置选择器
+     */
+    private void showLocationPicker() {
+        try {
+            Intent intent = new Intent(getActivity(), WebViewActivity.class);
+            intent.putExtra(WebViewActivity.ACTION, WebViewActivity.LOCATION);
+            locationLauncher.launch(intent);
+        } catch (Exception e) {
+            L.e("showLocationPicker error: " + e.getMessage());
+            Toast.makeText(getContext(), "位置功能启动失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 显示联系人名片选择器
+     */
+    private void showContactCardPicker() {
+        try {
+            ARouter.getInstance()
+                .build(Routes.Contact.ALL_FRIEND)
+                .withBoolean("isSelect", true)
+                .navigation(getActivity(), 1002);
+        } catch (Exception e) {
+            L.e("showContactCardPicker error: " + e.getMessage());
+            Toast.makeText(getContext(), "联系人选择器启动失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    /**
+     * 处理拍摄结果
+     */
+    private void handleShootResult(Intent data) {
+        try {
+            String fileUrl = data.getStringExtra("fileUrl");
+            String firstFrameUrl = data.getStringExtra("firstFrameUrl");
+            
+            if (!TextUtils.isEmpty(fileUrl)) {
+                Message msg = null;
+                if (MediaFileUtil.isImageType(fileUrl)) {
+                    msg = OpenIMClient.getInstance().messageManager.createImageMessageFromFullPath(fileUrl);
+                } else if (MediaFileUtil.isVideoType(fileUrl)) {
+                    long duration = MediaFileUtil.getDuration(fileUrl) / 1000;
+                    msg = OpenIMClient.getInstance().messageManager.createVideoMessageFromFullPath(
+                        fileUrl, MediaFileUtil.getFileType(fileUrl).mimeType, duration, firstFrameUrl);
+                }
+                
+                if (msg != null) {
+                    vm.sendMsg(msg);
+                }
+            }
+        } catch (Exception e) {
+            L.e("handleShootResult error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 处理文件选择结果
+     */
+    private void handleFileResult(Intent data) {
+        try {
+            Uri uri = data.getData();
+            if (uri != null) {
+                String filePath = GetFilePathFromUri.getFileAbsolutePath(getActivity(), uri);
+                if (!TextUtils.isEmpty(filePath)) {
+                    Message msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(filePath, new File(filePath).getName());
+                    vm.sendMsg(msg);
+                }
+            }
+        } catch (Exception e) {
+            L.e("handleFileResult error: " + e.getMessage());
+            Toast.makeText(getContext(), "文件处理失败", Toast.LENGTH_SHORT).show();
+        }
+    }
+    
+    /**
+     * 处理位置选择结果
+     */
+    private void handleLocationResult(Intent data) {
+        try {
+            // 从 WebViewActivity 返回的位置信息
+            String locationInfo = data.getStringExtra("locationInfo");
+            if (!TextUtils.isEmpty(locationInfo)) {
+                // TODO: 解析位置信息并创建位置消息
+                Toast.makeText(getContext(), "位置功能待完善", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            L.e("handleLocationResult error: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 处理联系人名片选择结果
+     */
+    private void handleContactCardResult(Intent data) {
+        try {
+            // 从 AllFriendActivity 返回的联系人信息
+            String userID = data.getStringExtra("userID");
+            if (!TextUtils.isEmpty(userID)) {
+                // TODO: 创建名片消息
+                Toast.makeText(getContext(), "名片功能待完善", Toast.LENGTH_SHORT).show();
+            }
+        } catch (Exception e) {
+            L.e("handleContactCardResult error: " + e.getMessage());
         }
     }
 
