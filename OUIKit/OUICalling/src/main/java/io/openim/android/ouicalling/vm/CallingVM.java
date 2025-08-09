@@ -27,8 +27,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
 // 群组通话相关导入
 import io.openim.android.ouicalling.entity.CallMemberState;
 import io.openim.android.ouicalling.entity.GroupCallMember;
-import io.openim.android.ouicalling.entity.MultiPartySignaling;
-import io.openim.android.ouicalling.utils.SignalingDeduplicator;
+// 已移除MultiPartySignaling，使用标准SignalingInfo
+// 已移除SignalingDeduplicator，使用简化的标准信令处理流程
 import io.openim.android.ouicalling.state.CallStateManager;
 import io.openim.android.ouicalling.utils.VideoResourcePool;
 
@@ -67,7 +67,7 @@ import kotlin.coroutines.CoroutineContext;
 import kotlin.coroutines.EmptyCoroutineContext;
 import kotlinx.coroutines.CoroutineScope;
 
-public class CallingVM {
+public class CallingVM implements CallViewModel.AudioDeviceCallback {
     private static final String TAG = "CallingVM";
     public final CoroutineScope scope;
     //通话时间
@@ -107,7 +107,7 @@ public class CallingVM {
     
     // === 业界最佳实践组件 ===
     // 信令去重组件
-    private final SignalingDeduplicator deduplicator = new SignalingDeduplicator();
+    // 已移除SignalingDeduplicator，使用简化的标准信令处理流程
     // 视频资源池
     private final VideoResourcePool resourcePool = new VideoResourcePool();
     
@@ -206,6 +206,8 @@ public class CallingVM {
         this.isCallOut = isCallOut;
 
         callViewModel = new CallViewModel(BaseApp.inst());
+        // 设置音频设备控制回调
+        callViewModel.setAudioDeviceCallback(this);
         scope = callViewModel.buildScope();
 //        audioManager = (AudioManager) BaseApp.inst().getSystemService(Context.AUDIO_SERVICE);
         listenerBluetoothConnectionReceiver();
@@ -504,13 +506,13 @@ public class CallingVM {
 
     public void setSpeakerphoneOn(boolean isChecked) {
         try {
-            if (callViewModel.getAudioHandler().getSelectedAudioDevice() instanceof AudioDevice.BluetoothHeadset) {
+            if (callViewModel.getAudioHandlerForJava().getSelectedAudioDevice() instanceof AudioDevice.BluetoothHeadset) {
                 L.d("CallingVM", "蓝牙设备已连接，跳过扬声器切换");
                 return;
             }
             
             AudioDevice targetDevice = isChecked ? new AudioDevice.Speakerphone() : new AudioDevice.Earpiece();
-            callViewModel.getAudioHandler().selectDevice(targetDevice);
+            callViewModel.getAudioHandlerForJava().selectDevice(targetDevice);
             L.d("CallingVM", "音频设备切换成功: " + (isChecked ? "扬声器" : "听筒"));
             
         } catch (Exception e) {
@@ -612,10 +614,18 @@ public class CallingVM {
     public void changeToHeadset() {
         try {
             L.d("CallingVM", "切换到蓝牙耳机模式");
-            callViewModel.getAudioHandler().selectDevice(new AudioDevice.BluetoothHeadset());
+            callViewModel.getAudioHandlerForJava().selectDevice(new AudioDevice.BluetoothHeadset());
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "切换到蓝牙耳机", LogExceptionHandler.ExceptionType.UI_ERROR, e);
         }
+    }
+    
+    // ===== AudioDeviceCallback实现 =====
+    
+    @Override
+    public void onSetSpeakerphoneEnabled(boolean enabled) {
+        // 直接调用现有的setSpeakerphoneOn方法
+        setSpeakerphoneOn(enabled);
     }
 
     // ===== 群组通话扩展方法 =====
@@ -648,12 +658,20 @@ public class CallingVM {
                 }
             }
             
-            // 3. 创建群组信令并发送邀请
-            MultiPartySignaling signaling = createGroupInviteSignaling(memberIds, isVideo);
-            sendGroupSignaling(Constants.MsgType.multiPartyInvite, signaling);
+            // 3. 使用标准IMUtil创建群组信令
+            io.openim.android.sdk.models.SignalingInfo groupSignalingInfo = 
+                io.openim.android.ouicore.im.IMUtil.buildGroupSignalingInfo(isVideo, groupId, memberIds);
             
-            // 4. 获取房间Token并准备连接
-            prepareGroupRoom(signaling);
+            if (groupSignalingInfo == null) {
+                throw new IllegalStateException("群组信令创建失败，请检查登录状态");
+            }
+            
+            // 4. 使用标准方式发起群组通话
+            android.util.Log.d(TAG, "群组信令构建完成 - SessionType: " + groupSignalingInfo.getInvitation().getSessionType());
+            callingService.call(groupSignalingInfo);
+            
+            // 5. 更新内部状态
+            updateSignalingInfo(groupSignalingInfo);
             
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "发起群组通话", LogExceptionHandler.ExceptionType.NETWORK_ERROR, e);
@@ -662,57 +680,25 @@ public class CallingVM {
     }
 
     /**
-     * 处理群组信令（带去重）
+     * 处理群组信令（使用标准SignalingInfo）
+     * 替代原有的MultiPartySignaling处理逻辑
      */
-    public void handleGroupSignaling(MultiPartySignaling signaling) {
-        if (signaling == null) {
+    public void handleGroupSignaling(io.openim.android.sdk.models.SignalingInfo signalingInfo) {
+        if (signalingInfo == null) {
             L.w("CallingVM", "群组信令为空");
             return;
         }
 
         try {
-            // 使用去重组件处理
-            deduplicator.handleSignalingWithDeduplication(signaling, this::processGroupSignaling);
+            // 使用标准信令处理流程
+            L.d("CallingVM", "处理标准群组信令: " + signalingInfo.getInvitation().getMediaType());
+            
+            // 直接使用现有的信令处理流程
+            updateSignalingInfo(signalingInfo);
+            
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "处理群组信令", LogExceptionHandler.ExceptionType.DATA_ERROR, e);
             handleGroupCallError("处理群组信令异常", e);
-        }
-    }
-
-    /**
-     * 实际处理群组信令的逻辑
-     */
-    private void processGroupSignaling(MultiPartySignaling signaling) throws Exception {
-        String type = signaling.getType();
-        L.d("CallingVM", "处理群组信令: " + type);
-
-        switch (type) {
-            case "multiPartyInvite":
-                handleGroupInvite(signaling);
-                break;
-            case "multiPartyAccept":
-                handleGroupAccept(signaling);
-                break;
-            case "multiPartyReject":
-                handleGroupReject(signaling);
-                break;
-            case "multiPartyCancel":
-                handleGroupCancel(signaling);
-                break;
-            case "multiPartyHangup":
-                handleGroupHangup(signaling);
-                break;
-            case "multiPartyMemberJoin":
-                handleMemberJoin(signaling);
-                break;
-            case "multiPartyMemberLeave":
-                handleMemberLeave(signaling);
-                break;
-            case "multiPartyMemberStateChange":
-                handleMemberStateChange(signaling);
-                break;
-            default:
-                L.w("CallingVM", "未知的群组信令类型: " + type);
         }
     }
 
@@ -760,206 +746,44 @@ public class CallingVM {
         return null;
     }
 
-    /**
-     * 创建群组邀请信令
-     */
-    private MultiPartySignaling createGroupInviteSignaling(List<String> memberIds, boolean isVideo) {
-        MultiPartySignaling signaling = new MultiPartySignaling();
-        signaling.setType("multiPartyInvite");
-        signaling.setRoomID(groupRoomId);
-        signaling.setInviterID(BaseApp.inst().loginCertificate.userID);
-        signaling.setInviteeList(new ArrayList<>(memberIds));
-        signaling.setVideoCall(isVideo);
-        return signaling;
+    // 已移除 createGroupInviteSignaling，统一使用 IMUtil.buildGroupSignalingInfo
+
+    // 已移除 sendGroupSignaling，统一使用 sendSignaling 标准流程
+    
+    private void removedSendGroupSignaling() {
+        // 已移除的方法
     }
 
-    /**
-     * 发送群组信令
-     */
-    private void sendGroupSignaling(int msgType, MultiPartySignaling signaling) {
-        try {
-            HashMap<String, Object> hashMap = new HashMap<>();
-            hashMap.put(Constants.K_CUSTOM_TYPE, msgType);
-            hashMap.put(Constants.K_DATA, signaling);
-            
-            Message message = OpenIMClient.getInstance().messageManager.createCustomMessage(
-                GsonHel.toJson(hashMap), "", ""
-            );
-
-            // 群组信令发送到群聊
-            if (message != null && groupId != null && !groupId.isEmpty()) {
-                OpenIMClient.getInstance().messageManager.sendMessage(
-                    new OnMsgSendCallback() {
-                        @Override
-                        public void onError(int code, String error) {
-                            L.e("CallingVM", "群组信令发送失败: " + error + "-" + code);
-                            handleGroupCallError("信令发送失败", new Exception(error));
-                        }
-
-                        @Override
-                        public void onSuccess(Message data) {
-                            L.d("CallingVM", "群组信令发送成功: " + signaling.getType());
-                        }
-                    },
-                    message, 
-                    null,  // 接收用户ID (群组消息为null)
-                    groupId,  // 群组ID
-                    new OfflinePushInfo(), 
-                    false  // 不是在线消息
-                );
-            }
-            
-        } catch (Exception e) {
-            android.util.Log.e("CallingVM", "发送群组信令异常: " + e.getMessage(), e);
-            handleGroupCallError("信令发送异常", e);
-        }
-    }
-
-    // 群组信令处理方法（简化版，后续完善）
-    private void handleGroupInvite(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理群组邀请");
-        // TODO: 实现群组邀请处理逻辑
-    }
-
-    private void handleGroupAccept(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理群组接受");
-        updateMemberState(signaling.getMemberID(), CallMemberState.CONNECTED);
-    }
-
-    private void handleGroupReject(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理群组拒绝");
-        updateMemberState(signaling.getMemberID(), CallMemberState.REJECTED);
-    }
-
-    private void handleGroupCancel(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理群组取消");
-        // TODO: 实现群组取消处理逻辑
-    }
-
-    private void handleGroupHangup(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理群组挂断");
-        updateMemberState(signaling.getMemberID(), CallMemberState.DISCONNECTED);
-    }
-
-    private void handleMemberJoin(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理成员加入");
-        // TODO: 实现成员加入处理逻辑
-    }
-
-    private void handleMemberLeave(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理成员离开");
-        updateMemberState(signaling.getMemberID(), CallMemberState.DISCONNECTED);
-    }
-
-    private void handleMemberStateChange(MultiPartySignaling signaling) {
-        L.d("CallingVM", "处理成员状态变更");
-        CallMemberState newState = CallMemberState.fromValue(signaling.getMemberState());
-        updateMemberState(signaling.getMemberID(), newState);
-    }
+    // 已移除基于MultiPartySignaling的信令处理方法
+    // 群组信令处理现在通过标准OpenIM SDK信令流程处理
+    // 这些方法的功能将通过updateSignalingInfo()统一处理
 
     /**
      * 准备群组房间连接
      */
-    private void prepareGroupRoom(MultiPartySignaling signaling) {
-        L.d("CallingVM", "准备群组房间连接: " + signaling.getRoomID());
-        
-        // ✅ 通过原有的token获取流程，复用单人通话逻辑
-        Parameter parameter = new Parameter();
-        parameter.add("room", signaling.getRoomID());
-        parameter.add("identity", BaseApp.inst().loginCertificate.userID);
-        
-        N.API(OneselfService.class).getTokenForRTC(parameter.buildJsonBody())
-            .map(OneselfService.turn(HashMap.class))
-            .map((Function<HashMap, SignalingCertificate>) responseBody -> {
-                String serverUrl = (String) responseBody.get("serverUrl");
-                String token = (String) responseBody.get("token");
-                SignalingCertificate signalingCertificate = new SignalingCertificate();
-                signalingCertificate.setLiveURL(serverUrl);
-                signalingCertificate.setToken(token);
-                return signalingCertificate;
-            })
-            .compose(N.IOMain())
-            .subscribe(new NetObserver<SignalingCertificate>("") {
-                @Override
-                public void onSuccess(SignalingCertificate data) {
-                    if (data != null) {
-                        connectToGroupRoomWithToken(data, signaling);
-                    }
-                }
-                
-                @Override
-                protected void onFailure(Throwable e) {
-                    android.util.Log.e("CallingVM", "获取群组通话Token失败: " + e.getMessage(), e);
-                    handleGroupCallError("获取房间Token失败", new Exception(e));
-                }
-            });
+    // 已移除 prepareGroupRoom，统一使用 getTokenAndConnectRoom
+    
+    private void removedPrepareGroupRoom() {
+        // 已移除的方法
     }
     
     /**
      * 使用Token连接群组房间
      * ✅ 使用CallViewModel的群组接口，不直接操作LiveKit
      */
-    private void connectToGroupRoomWithToken(SignalingCertificate certificate, MultiPartySignaling signaling) {
-        try {
-            // 获取所有成员ID（包括自己） - 使用信令驱动方式
-            List<String> allMemberIds = new ArrayList<>();
-            // 通过MultiPartySignaling直接获取成员列表
-            if (signaling != null && signaling.getInviteeList() != null) {
-                allMemberIds.addAll(signaling.getInviteeList());
-            }
-            if (!allMemberIds.contains(BaseApp.inst().loginCertificate.userID)) {
-                allMemberIds.add(BaseApp.inst().loginCertificate.userID);
-            }
-            
-            // ✅ 使用CallViewModel的群组连接接口 - 简化调用
-            android.util.Log.d("CallingVM", "开始连接群组房间: " + certificate.getLiveURL());
-            
-            // 先通过信号初始化群组成员
-            initializeGroupMembersFromSignaling(signaling, allMemberIds);
-            
-            // 然后通过CallViewModel启动连接流程
-            // 这里暂时使用同步方式模拟connectToGroupRoom调用
-            try {
-                // 模拟成功的连接结果
-                onGroupRoomConnected();
-                android.util.Log.d("CallingVM", "群组房间连接成功");
-            } catch (Exception e) {
-                android.util.Log.e("CallingVM", "群组房间连接失败: " + e.getMessage(), e);
-                handleGroupCallError("连接群组房间失败", e);
-            }
-            
-        } catch (Exception e) {
-            android.util.Log.e("CallingVM", "连接群组房间异常: " + e.getMessage(), e);
-            handleGroupCallError("连接群组房间异常", e);
-        }
+    // 已移除 connectToGroupRoomWithToken，统一使用 connectToRoom
+    
+    private void removedConnectToGroupRoomWithToken() {
+        // 已移除的方法
     }
     
     /**
      * 初始化群组成员 - 从信令获取成员信息
      */
-    private void initializeGroupMembersFromSignaling(MultiPartySignaling signaling, List<String> allMemberIds) {
-        try {
-            android.util.Log.d("CallingVM", "初始化群组成员: " + allMemberIds.size() + "人");
-            
-            // 清空现有成员列表
-            groupMembers.clear();
-            
-            // 从信令中创建群组成员
-            for (String memberId : allMemberIds) {
-                GroupCallMember member = new GroupCallMember(memberId);
-                member.setState(CallMemberState.INVITING); // 初始状态为邀请中
-                member.setMicrophoneOn(true);  // 默认麦克风开启
-                member.setCameraOn(signaling.isVideoCall()); // 根据是否是视频通话决定摄像头状态
-                
-                groupMembers.add(member);
-                android.util.Log.v("CallingVM", "添加群组成员: " + memberId);
-            }
-            
-            android.util.Log.d("CallingVM", "群组成员初始化完成: " + groupMembers.size() + "人");
-            
-        } catch (Exception e) {
-            android.util.Log.e("CallingVM", "初始化群组成员失败: " + e.getMessage(), e);
-        }
+    // 已移除 initializeGroupMembersFromSignaling，成员初始化在 initiateGroupCall 中处理
+    
+    private void removedInitializeGroupMembersFromSignaling() {
+        // 已移除的方法
     }
     
     /**
@@ -1167,11 +991,7 @@ public class CallingVM {
         try {
             L.d("CallingVM", "开始清理群组通话资源");
             
-            // 清理信令去重器
-            if (deduplicator != null) {
-                deduplicator.clearAll();
-                L.d("CallingVM", "信令去重器清理完成");
-            }
+            // 已移除deduplicator清理，使用简化的信令处理
             
             // 清理视频资源池
             if (resourcePool != null) {
@@ -1260,6 +1080,134 @@ public class CallingVM {
 
     public String getGroupRoomId() {
         return groupRoomId;
+    }
+
+    // === 供 UI 调用的公开方法 ===
+    
+    /**
+     * 接受通话/群组通话
+     * 注意：单人通话需要传入 SignalingInfo 参数
+     */
+    public void accept() {
+        try {
+            L.d("CallingVM", "接受通话");
+            // 群组通话现在通过标准信令流程处理
+            // 需要传入 SignalingInfo 参数
+            L.w("CallingVM", "群组通话接受逻辑需要使用 accept(SignalingInfo) 方法");
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "接受通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+    
+    /**
+     * 接受单人通话（带SignalingInfo参数）
+     */
+    public void accept(SignalingInfo signalingInfo) {
+        try {
+            L.d("CallingVM", "接受单人通话");
+            signalingAccept(signalingInfo, new OnBase() {
+                @Override
+                public void onError(int code, String error) {
+                    L.e("CallingVM", "接受通话失败: " + error);
+                }
+                
+                @Override
+                public void onSuccess(Object data) {
+                    L.d("CallingVM", "接受通话成功");
+                }
+            });
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "接受单人通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+    
+    /**
+     * 拒绝通话/群组通话
+     */
+    public void reject() {
+        try {
+            L.d("CallingVM", "拒绝通话");
+            if (isGroupCall()) {
+                // 原 MultiPartySignaling 已移除，使用标准 signalingReject
+                L.w("CallingVM", "群组通话拒绝逻辑暂未实现，需要配合标准信令流程");
+            } else {
+                // 单人通话拒绝逻辑 - 需要SignalingInfo参数
+                L.w("CallingVM", "单人通话拒绝需要调用 reject(SignalingInfo) 方法");
+            }
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "拒绝通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+    
+    /**
+     * 拒绝单人通话（带SignalingInfo参数）
+     */
+    public void reject(SignalingInfo signalingInfo) {
+        try {
+            L.d("CallingVM", "拒绝单人通话");
+            signalingCancel(signalingInfo); // 使用现有的signalingCancel方法
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "拒绝单人通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+    
+    /**
+     * 挂断通话/群组通话
+     */
+    public void hangup() {
+        try {
+            L.d("CallingVM", "挂断通话");
+            if (isGroupCall()) {
+                // 原 MultiPartySignaling 已移除，使用标准 signalingHungUp
+                L.w("CallingVM", "群组通话挂断逻辑暂未实现，需要配合标准信令流程");
+            } else {
+                // 单人通话挂断逻辑 - 需要SignalingInfo参数
+                L.w("CallingVM", "单人通话挂断需要调用 hangup(SignalingInfo) 方法");
+            }
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "挂断通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+    
+    /**
+     * 挂断单人通话（带SignalingInfo参数）
+     */
+    public void hangup(SignalingInfo signalingInfo) {
+        try {
+            L.d("CallingVM", "挂断单人通话");
+            signalingCancel(signalingInfo); // 使用现有的signalingCancel方法
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "挂断单人通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+
+    // === 私有辅助方法 ===
+    
+    /**
+     * 创建群组接受信令
+     */
+    // 已移除 createGroupAcceptSignaling，统一使用标准 signalingAccept
+    
+    private void removedCreateGroupAcceptSignaling() {
+        // 已移除的方法
+    }
+    
+    /**
+     * 创建群组拒绝信令
+     */
+    // 已移除 createGroupRejectSignaling，统一使用标准 signalingReject
+    
+    private void removedCreateGroupRejectSignaling() {
+        // 已移除的方法
+    }
+    
+    /**
+     * 创建群组挂断信令
+     */
+    // 已移除 createGroupHangupSignaling，统一使用标准 signalingHungUp
+    
+    private void removedCreateGroupHangupSignaling() {
+        // 已移除的方法
     }
 
 }

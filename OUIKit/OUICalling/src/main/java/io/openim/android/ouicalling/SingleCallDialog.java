@@ -117,8 +117,8 @@ public class SingleCallDialog extends BaseCallDialog {
      */
     private void updateUserInfoUI(PublicUserInfo userInfo) {
         try {
-            view.nickName.setText(userInfo.getNickname());
-            view.nickName2.setText(userInfo.getNickname());
+            view.name.setText(userInfo.getNickname());
+            view.name2.setText(userInfo.getNickname());
             
             // 加载头像
             if (userInfo.getFaceURL() != null && !userInfo.getFaceURL().isEmpty()) {
@@ -238,7 +238,7 @@ public class SingleCallDialog extends BaseCallDialog {
             if (callingVM.isStartCall) {
                 floatViewBinding.sTips.setText(io.openim.android.ouicore.R.string.calling);
             } else {
-                floatViewBinding.sTips.setText(io.openim.android.ouicore.R.string.call_in);
+                floatViewBinding.sTips.setText(io.openim.android.ouicore.R.string.receive_call_invite);
             }
         }
     }

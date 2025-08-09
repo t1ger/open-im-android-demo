@@ -211,9 +211,7 @@ public class GroupCallDialog extends BaseCallDialog {
             
             // 直接初始化群组成员列表
             for (String memberId : allMemberIds) {
-                GroupCallMember member = new GroupCallMember();
-                member.setUserId(memberId);
-                member.setNickname(memberId); // 暂时使用ID作为昵称，后续会更新
+                GroupCallMember member = new GroupCallMember(memberId, memberId, null); // 暂时使用ID作为昵称
                 member.setState(CallMemberState.IDLE);
                 callingVM.groupMembers.add(member);
             }
@@ -357,7 +355,7 @@ public class GroupCallDialog extends BaseCallDialog {
             
             // 清理资源池
             if (callingVM.getResourcePool() != null) {
-                callingVM.getResourcePool().releaseAllRenderers();
+                callingVM.getResourcePool().cleanup();
             }
             
             // 清理绑定

@@ -45,6 +45,7 @@ public class CallStateManager {
     
     /**
      * 静态方法：判断是否为群组通话
+     * 业务规则：只依据SessionType判断，这是最权威的业务依据
      * @param signalingInfo 信令信息
      * @return true if 群组通话
      */
@@ -53,26 +54,12 @@ public class CallStateManager {
             return false;
         }
         
-        SignalingInvitationInfo invitation = signalingInfo.getInvitation();
-        
-        // 方法1：基于SessionType判断（主要判断依据）
-        if (invitation.getSessionType() == ConversationType.GROUP_CHAT) {
-            return true;
-        }
-        
-        // 方法2：基于GroupID判断（辅助判断）
-        if (!TextUtils.isEmpty(invitation.getGroupID())) {
-            return true;
-        }
-        
-        // 方法3：基于参与者数量判断（兜底判断）
-        List<String> invitees = invitation.getInviteeUserIDList();
-        if (invitees != null && invitees.size() > 1) {
-            Log.d(TAG, "基于参与者数量判断为群组通话: " + invitees.size() + "人");
-            return true;
-        }
-        
-        return false;
+        // 只依据SessionType判断 - 这是最权威的业务依据
+        // 删除了错误的GroupID和数量判断逻辑，因为：
+        // 1. GroupID可能为空（临时群组通话）
+        // 2. 单聊也可能有多个invitee（多设备同时通话）
+        // 3. 群聊可能只选1个invitee（在已有群组中添加新成员）
+        return signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT;
     }
     
     /**

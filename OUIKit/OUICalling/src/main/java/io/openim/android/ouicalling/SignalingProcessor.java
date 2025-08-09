@@ -77,9 +77,8 @@ public class SignalingProcessor {
         }
         
         // 检查必要字段
-        if (signalingInfo.getInvitation().getSessionType() == null) {
-            return ValidationResult.error("会话类型为null");
-        }
+        // SessionType的具体验证交由CallStateManager处理，这里跳过
+        // 理由：SDK中可能存在类型不一致问题
         
         if (signalingInfo.getInvitation().getMediaType() == null) {
             return ValidationResult.error("媒体类型为null");

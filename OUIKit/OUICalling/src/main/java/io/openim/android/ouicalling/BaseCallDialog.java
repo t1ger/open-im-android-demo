@@ -16,6 +16,7 @@ import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
 import com.hjq.window.EasyWindow;
+import io.openim.android.ouicore.base.BaseApp;
 import io.openim.android.sdk.models.SignalingInfo;
 
 /**
@@ -141,10 +142,8 @@ public abstract class BaseCallDialog extends BaseDialog {
      */
     private void showFloatView() {
         if (null == easyWindow) {
-            easyWindow = new EasyWindow(context)
+            easyWindow = new EasyWindow<>(BaseApp.inst())
                 .setContentView(floatViewBinding.getRoot())
-                .setBackgroundDimEnable(false)
-                .setTouchable(true)
                 .setDraggable();
         }
         if (!easyWindow.isShowing()) easyWindow.show();

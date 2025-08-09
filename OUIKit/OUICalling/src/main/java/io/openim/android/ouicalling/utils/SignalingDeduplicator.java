@@ -5,7 +5,7 @@ import android.util.Log;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-import io.openim.android.ouicalling.entity.MultiPartySignaling;
+import io.openim.android.sdk.models.SignalingInfo;
 
 /**
  * 信令去重器 - 业界最佳实践
@@ -15,6 +15,7 @@ import io.openim.android.ouicalling.entity.MultiPartySignaling;
  * 2. 确保信令处理的幂等性
  * 3. 自动清理过期的消息记录
  * 
+ * 重构说明：已从基于MultiPartySignaling迁移到标准SignalingInfo
  * 参考：Kafka消息去重、RocketMQ幂等设计
  */
 public class SignalingDeduplicator {
@@ -75,26 +76,32 @@ public class SignalingDeduplicator {
     }
 
     /**
-     * 处理信令并自动去重
-     * @param signaling 信令对象
+     * 处理信令并自动去重（重构：使用标准SignalingInfo）
+     * @param signalingInfo 标净SignalingInfo对象
      * @param processor 实际处理逻辑
      * @return 是否成功处理（false表示重复消息被忽略）
      */
     public boolean handleSignalingWithDeduplication(
-            MultiPartySignaling signaling, 
-            SignalingProcessor processor) throws Exception {
+            SignalingInfo signalingInfo, 
+            StandardSignalingProcessor processor) throws Exception {
         
-        if (signaling == null) {
-            Log.w(TAG, "信令对象为空");
+        if (signalingInfo == null || signalingInfo.getInvitation() == null) {
+            Log.w(TAG, "信令对象或邀请信息为空");
             return false;
         }
 
-        String messageId = signaling.getMessageId();
+        // 使用RoomID作为唯一标识符（因为SignalingInfo没有内置MessageId）
+        String messageId = signalingInfo.getInvitation().getRoomID();
+        if (messageId == null) {
+            // 如果没有RoomID，使用InviterUserID+时间戳作为备用ID
+            messageId = signalingInfo.getInvitation().getInviterUserID() + "_" + 
+                       signalingInfo.getInvitation().getInitiateTime();
+        }
         
         // 检查是否重复
         if (isDuplicate(messageId)) {
             Log.i(TAG, "重复信令，忽略处理: " + messageId + 
-                    ", 类型: " + signaling.getType());
+                    ", 类型: " + signalingInfo.getInvitation().getMediaType());
             return false;
         }
 
@@ -103,10 +110,10 @@ public class SignalingDeduplicator {
 
         try {
             // 执行实际处理逻辑
-            processor.processSignaling(signaling);
+            processor.processSignaling(signalingInfo);
             
             Log.d(TAG, "信令处理完成: " + messageId + 
-                    ", 类型: " + signaling.getType());
+                    ", 类型: " + signalingInfo.getInvitation().getMediaType());
             return true;
             
         } catch (Exception e) {
@@ -114,7 +121,7 @@ public class SignalingDeduplicator {
             processedMessages.remove(messageId);
             
             Log.e(TAG, "信令处理失败: " + messageId + 
-                    ", 类型: " + signaling.getType() + 
+                    ", 类型: " + signalingInfo.getInvitation().getMediaType() + 
                     ", 错误: " + e.getMessage(), e);
             
             throw e;  // 重新抛出异常给上层处理
@@ -182,14 +189,14 @@ public class SignalingDeduplicator {
     }
 
     /**
-     * 信令处理器接口
+     * 标准信令处理器接口（重构：使用SignalingInfo）
      */
-    public interface SignalingProcessor {
+    public interface StandardSignalingProcessor {
         /**
-         * 处理信令的具体逻辑
-         * @param signaling 要处理的信令
+         * 处理标准信令的具体逻辑
+         * @param signalingInfo 要处理的标净SignalingInfo
          * @throws Exception 处理过程中的异常
          */
-        void processSignaling(MultiPartySignaling signaling) throws Exception;
+        void processSignaling(SignalingInfo signalingInfo) throws Exception;
     }
 }

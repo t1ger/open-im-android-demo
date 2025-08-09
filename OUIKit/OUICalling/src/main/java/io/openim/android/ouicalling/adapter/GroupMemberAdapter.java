@@ -372,4 +372,28 @@ public class GroupMemberAdapter extends RecyclerView.Adapter<GroupMemberAdapter.
     }
     
     private RecyclerView recyclerView;
+    
+    /**
+     * 清理资源
+     */
+    public void cleanup() {
+        try {
+            // 清理所有视频渲染器
+            for (GroupCallMember member : memberList) {
+                if (member.getVideoRenderer() != null) {
+                    member.setVideoRenderer(null);
+                }
+            }
+            
+            // 清理成员列表
+            memberList.clear();
+            
+            // 通知数据变更
+            notifyDataSetChanged();
+            
+            android.util.Log.d("GroupMemberAdapter", "清理完成");
+        } catch (Exception e) {
+            android.util.Log.e("GroupMemberAdapter", "清理资源时发生错误", e);
+        }
+    }
 }

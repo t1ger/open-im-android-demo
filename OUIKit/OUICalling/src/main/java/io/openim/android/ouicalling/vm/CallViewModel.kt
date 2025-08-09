@@ -5,6 +5,7 @@ import android.content.Intent
 import androidx.lifecycle.*
 import androidx.lifecycle.viewModelScope
 import io.livekit.android.audio.AudioSwitchHandler
+import com.twilio.audioswitch.AudioDevice
 import io.livekit.android.events.RoomEvent
 import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.participant.ConnectionQuality
@@ -59,7 +60,8 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     private val streamMonitor = VideoStreamMonitor(this)
     
     // ===== 音频处理器 =====
-    val audioHandler = roomManager.room.audioHandler as AudioSwitchHandler
+    // 注意：audioHandler作为private，通过专门的方法暴露给Java
+    private val audioHandler = roomManager.room.audioHandler as AudioSwitchHandler
     
     // ===== 参与者相关 =====
     val allParticipants = speakerManager.allParticipants
@@ -192,6 +194,62 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
      * 切换摄像头
      */
     fun flipCamera() = deviceManager.flipCamera()
+    
+    /**
+     * 切换摄像头 (兼容性别名)
+     */
+    fun switchCamera() = flipCamera()
+    
+    /**
+     * 设置麦克风开关 (兼容性别名)
+     */
+    fun setMicrophoneEnabled(enabled: Boolean) = setMicEnabled(enabled)
+    
+    // ===== 音频设备控制回调 =====
+    private var audioDeviceCallback: AudioDeviceCallback? = null
+    
+    /**
+     * 音频设备控制回调接口
+     */
+    interface AudioDeviceCallback {
+        fun onSetSpeakerphoneEnabled(enabled: Boolean)
+    }
+    
+    /**
+     * 设置音频设备控制回调（由CallingVM调用）
+     */
+    fun setAudioDeviceCallback(callback: AudioDeviceCallback?) {
+        this.audioDeviceCallback = callback
+    }
+    
+    /**
+     * 设置扬声器开关
+     * UI层调用此方法，实际操作委托给CallingVM
+     */
+    fun setSpeakerphoneEnabled(enabled: Boolean) {
+        Timber.d { "[CallViewModel] 设置扬声器: $enabled" }
+        audioDeviceCallback?.onSetSpeakerphoneEnabled(enabled)
+    }
+    
+    /**
+     * 获取音频处理器的Java访问接口
+     * 专门为CallingVM.java提供访问
+     */
+    fun getAudioHandlerForJava(): AudioSwitchHandler = audioHandler
+    
+    /**
+     * 检查摄像头是否开启
+     */
+    fun isCameraEnabled(): Boolean {
+        return deviceManager.getCurrentCameraState()
+    }
+    
+    /**
+     * 清理所有视频渲染器
+     */
+    fun clearVideoRenderers() {
+        videoManager.clearAllBindings()
+    }
     
     /**
      * 开始屏幕共享

@@ -1,70 +1,61 @@
-[33mcommit 71b97c5e5e162341b8c2cc710c71bded6eeee5f3[m[33m ([m[1;36mHEAD -> [m[1;32mfeat/multi-party-calling[m[33m, [m[1;31morigin/feat/multi-party-calling[m[33m)[m
-Author: Clacky <develop@clacky.ai>
-Date:   Wed Aug 6 04:40:43 2025 -0400
-
-    🏗️ 重大架构重构: 修复设计偏离问题并确保信令驱动模式
-    
-    ## 核心问题分析与修复
-    
-    ### ❌ 发现的问题
-    - 直接暴露LiveKit的.flow扩展，违背'不要直接操作API'原则
-    - Manager层返回原始LiveKit Flow对象，缺乏业务抽象
-    - 架构偏离既定设计，没有遵循单人聊天CallDialog.java的成功模式
-    
-    ### ✅ 重构成果
-    
-    **1. SpeakerManager重新设计**
-    - 移除直接的LiveKit Flow暴露
-    - 实现信令驱动的状态管理
-    - 提供updateActiveSpeakers()等业务级接口
-    
-    **2. GroupCallManager修复**
-    - 修复LiveKit 2.0.1 API兼容性问题
-    - trackPublications.values.firstOrNull()替代错误调用
-    - 移除直接的Flow暴露，改为当前值返回
-    
-    **3. MultiStreamManager重构**
-    - 禁用直接订阅LiveKit事件
-    - 添加updateActiveSpeakersFromSignaling()信令接口
-    - 改为通过CallingVM驱动更新
-    
-    **4. CallViewModel优化**
-    - 移除直接的Flow暴露
-    - 更新Manager构造函数调用
-    - 确保符合信令驱动架构
-    
-    **5. 技术问题修复**
-    - VideoBindingManager API兼容性
-    - MultiStreamDemoActivity编译错误
-    - 所有Manager层的Flow使用规范化
-    
-    ## 架构原则重新确立
-    
-    ### 🎯 正确的设计模式
-    - **信令驱动**: 所有状态通过信令更新，而非直接订阅LiveKit
-    - **API封装**: Manager层完全隐藏LiveKit实现细节
-    - **事件订阅**: 使用CallViewModel.subscribe()方法，参照CallDialog.java模式
-    - **层次分离**: UI -> ViewModel -> Manager -> LiveKit，职责清晰
-    
-    ### 📈 代码质量提升
-    - 更好的封装性和可维护性
-    - 遵循统一的架构模式
-    - 易于扩展和测试
-    - 符合既定设计原则
-    
-    ## 修复的文件
-    - SpeakerManager.kt - 完全重写，信令驱动
-    - GroupCallManager.kt - API修复和Flow移除
-    - MultiStreamManager.kt - 架构重构
-    - CallViewModel.kt - 接口优化
-    - VideoBindingManager.kt - API兼容性
-    - MultiStreamDemoActivity.kt - 编译错误修复
-    
-    这次重构解决了根本性的架构设计问题，确保代码符合既定的设计原则和最佳实践。
-
+.gitignore
+Demo/app/libs/EasyWindow-10.2.aar
+Demo/app/libs/com.oliver.record.aar
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/BaseCallDialog.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallDialog.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallDialogFactory.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallDialog_DEPRECATED.md
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallingServiceImp.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/GroupCallDialog.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/SignalingProcessor.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/SingleCallDialog.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/adapter/GroupMemberAdapter.java
 OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/demo/MultiStreamDemoActivity.kt
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/GroupCallMember.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/MultiPartySignaling.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/PerformanceSummary.kt
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/StreamStatistics.kt
 OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/GroupCallManager.kt
 OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/MultiStreamManager.kt
 OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/SpeakerManager.kt
 OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/VideoBindingManager.kt
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/monitor/LightweightPerformanceMonitor.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/state/CallStateManager.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/state/DialogSwitchStateMachine.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/utils/SignalingDeduplicator.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/utils/VideoResourcePool.java
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/utils/VideoStreamMonitor.kt
 OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/vm/CallViewModel.kt
+OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/vm/CallingVM.java
+OUIKit/OUICalling/src/main/res/layout/activity_demo.xml
+OUIKit/OUIConversation/build.gradle
+OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/ui/ChatActivity.java
+OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/vm/ChatVM.java
+OUIKit/OUIConversation/src/main/res/layout/activity_chat.xml
+OUIKit/OUICore/build.gradle
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/config/CallingConfig.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/ExUserInfo.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/FriendSelectable.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/GroupMemberSelectable.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/SelectableUser.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/factory/SignalingInfoFactory.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/im/IMUtil.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/im/IMUtilSignalingPatch.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/utils/L.java
+OUIKit/OUICore/src/main/java/io/openim/android/ouicore/utils/LogExceptionHandler.java
+OUIKit/OUIGroup/src/main/java/io/openim/android/ouigroup/ui/InitiateGroupActivity.java
+README.md
+build.gradle
+docs/README.md
+docs/api-usage-guide.md
+docs/architecture-compliance-fix.md
+docs/architecture-principles.md
+docs/call-dialog-architecture-refactor.md
+docs/call-dialog-migration-guide.md
+docs/current-project-status.md
+docs/group-audio-video-progress-tracking.md
+docs/mvp-release-notes.md
+docs/week2-day6-multistream-implementation.md
+gradle.properties
+tty echo
+"\347\276\244\347\273\204\351\237\263\350\247\206\351\242\221\346\236\266\346\236\204\

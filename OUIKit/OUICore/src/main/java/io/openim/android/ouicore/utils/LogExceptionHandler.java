@@ -36,7 +36,17 @@ public class LogExceptionHandler {
         AUTH_ERROR("身份验证异常"),
         CONFIG_ERROR("配置异常"),
         PERMISSION_ERROR("权限异常"),
-        UNKNOWN_ERROR("未知异常");
+        UNKNOWN_ERROR("未知异常"),
+        
+        // 为通话模块添加的新类型
+        FACTORY_ERROR("工厂创建异常"),
+        VALIDATION_ERROR("数据校验异常"),
+        CRITICAL_ERROR("关键错误"),
+        CALLING_ERROR("通话异常"),
+        DATABASE_ERROR("数据库异常"),
+        SIGNALING_ERROR("信令异常"),
+        CLEANUP_ERROR("资源清理异常"),
+        OBSERVER_ERROR("观察者异常");
         
         private final String description;
         
