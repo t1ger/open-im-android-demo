@@ -15,7 +15,7 @@ import io.openim.android.ouicore.services.CallingService;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
-import io.openim.android.ouicore.widget.EasyWindow;
+import com.hjq.window.EasyWindow;
 import io.openim.android.sdk.models.SignalingInfo;
 
 /**

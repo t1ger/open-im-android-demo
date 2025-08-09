@@ -21,7 +21,7 @@ import io.openim.android.ouicore.utils.L;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.OnDedrepClickListener;
 import io.openim.android.sdk.OpenIMClient;
-import io.openim.android.sdk.callback.OnBase;
+import io.openim.android.sdk.listener.OnBase;
 import io.openim.android.sdk.models.GroupInfo;
 import io.openim.android.sdk.models.SignalingInfo;
 

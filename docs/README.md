@@ -1,132 +1,299 @@
-# OpenIM Android 项目文档
+open-im-android-demo/Demo on git feat/multi-party-calling [!] via gradle v7.5.1 via java v17.0.15 took 50s 
+在# OpenIM Android 群组音视频项目
 
-## 📚 文档导航
+## 项目概述
 
-本目录包含OpenIM Android项目的完整文档，包括架构设计、功能实现、API使用指南等。
+基于 OpenIM SDK 和 LiveKit RTC 的企业级即时通讯应用，专注于群组音视频通话功能的完整实现。采用现代化的 Android 架构设计，提供微信群聊风格的多人音视频通话体验。
 
-### 🎯 核心文档
+## 核心特性
 
-#### [项目当前状态](./current-project-status.md) ⭐
-- **最重要**: 了解项目最新状态和完成度
-- 编译状态、架构合规性、功能完整性
-- 技术栈和项目结构概览
-- 当前成就和已知技术债务
+### 🎯 群组音视频通话
+- **多人通话**: 支持最多9人的群组音视频通话
+- **微信风格**: 九宫格布局，支持手动切换主画面
+- **实时同步**: 基于 IM 信令的状态实时同步
+- **稳定可靠**: 完整的异常处理和网络重连机制
 
-#### [架构原则和设计规范](./architecture-principles.md) ⭐
-- **必读**: 项目核心架构原则
-- 统一异常处理架构 (新增)
-- 信令驱动架构详解
-- Manager模式封装策略
-- 分层架构和并发安全规范
+### 🏗️ 架构设计
+- **信令驱动**: 所有业务状态通过 IM 信令 JSON 同步
+- **业务解耦**: ViewModel 统一管理业务状态，RTC 只做流服务
+- **身份统一**: 所有资料、身份、权限由 IM 统一管理
 
-#### [API使用指南](./api-usage-guide.md) ⭐
-- **开发必备**: 完整的API使用教程
-- CallingVM、CallViewModel核心API
-- 群组音视频通话集成示例
-- Week 2 Day 6 多路视频流API
+### 📱 技术栈
+- **IM 系统**: OpenIM SDK
+- **RTC 引擎**: LiveKit Android SDK  
+- **架构模式**: MVVM + DataBinding
+- **路由管理**: ARouter
+- **依赖注入**: 基于接口的依赖注入
 
-### 🚀 功能实现文档
+## 项目结构
 
-#### [Week 2 Day 6: 多路视频流实现](./week2-day6-multistream-implementation.md)
-- 多路视频流自动分发和渲染
-- MultiStreamManager智能管理组件
-- VideoStreamMonitor性能监控
-- 技术特性和集成状态
+```
+OpenIM-Android/
+├── Demo/                           # 主应用模块
+│   └── app/src/main/java/io/openim/android/demo/
+├── OUIKit/                         # UI 组件库
+│   ├── OUICore/                    # 核心组件
+│   ├── OUIConversation/            # 会话模块  
+│   ├── OUICalling/                 # 通话模块
+│   ├── OUIContact/                 # 联系人模块
+│   ├── OUIGroup/                   # 群组模块
+│   └── OUIApplet/                  # 小程序模块
+└── docs/                           # 项目文档
+```
 
-#### [MVP发布说明](./mvp-release-notes.md)
-- MVP v1.0 完整功能清单
-- 关键文件和使用方法
-- 已知问题和限制
-- 测试建议和下一版本计划
+## 关键组件
 
-### 📋 开发规划文档
+### 1. 通话核心组件
+- **`GroupCallDialog`**: 群组通话主界面，九宫格视频布局
+- **`CallStateManager`**: 通话状态统一管理，单例模式
+- **`MultiStreamManager`**: 多路视频流管理和资源优化
+- **`CallDialogFactory`**: 通话Dialog工厂，支持单人/群组通话
 
-#### [群组音视频功能设计概要](./group-audio-video-design.md)
-- 项目背景和设计目标
-- 现有架构分析
-- 信令协议扩展设计
-- 核心业务逻辑
+### 2. 信令处理
+- **`ChatVM`**: 负责信令的构建和发送
+- **`IMUtil`**: IM 工具类，处理群组信令信息构建
+- **`SignalingDeduplicator`**: 信令去重机制
 
-#### [群组音视频功能实现计划](./group-audio-video-implementation-plan.md)
-- 总体实施策略和时间线
-- 分阶段任务清单
-- 关键代码实现示例
-- 验收标准
+### 3. 路由管理
+- **`Routes`**: ARouter 路由常量定义
+- **`InitiateGroupActivity`**: 群组成员选择页面
+- **成员选择模式**: 支持 `IS_SELECT_MEMBER` 参数
 
-#### [群组音视频功能开发进度跟踪](./group-audio-video-progress-tracking.md)
-- 详细进度跟踪表
-- 各阶段任务完成情况
-- 验收标准和里程碑
+### 4. 数据模型
+- **`GroupCallMember`**: 群组通话成员实体
+- **`CallMemberState`**: 成员状态枚举 (CALLING/ACCEPTED/REJECTED/TIMEOUT)
 
-### 🔧 重构相关文档
+## 业务流程
 
-#### [CallViewModel重构方案](./callviewmodel-refactor-proposal.md)
-- 重构必要性分析
-- 按领域拆分的重构方案
-- Manager模式详细设计
-- 重构收益和实施建议
+### 群组通话发起流程
+```
+1. 群聊页面点击群组通话按钮
+   ↓
+2. 弹窗选择音频/视频通话类型  
+   ↓
+3. 跳转InitiateGroupActivity选择成员（最多9人）
+   ↓
+4. ChatVM构建群组通话信令
+   ↓ 
+5. 通过OpenIM发送群组信令
+   ↓
+6. CallDialogFactory创建GroupCallDialog
+   ↓
+7. 九宫格主界面等待其他成员响应
+```
 
-#### [重构方案选择分析](./refactor-options-analysis.md)
-- 多种重构方案对比
-- 综合评估矩阵
-- 推荐方案和决策建议
+### 信令格式
+```json
+{
+  "signalID": "unique_signal_id",
+  "opUserID": "operator_user_id",
+  "groupID": "group_id", 
+  "sessionType": 3,
+  "callType": "video",
+  "participants": [
+    {
+      "userID": "user_id",
+      "status": "calling",
+      "joinTime": 1699000000
+    }
+  ],
+  "timestamp": 1699000000,
+  "action": "invite"
+}
+```
 
-#### [重构实施计划](./refactor-implementation-plan.md)
-- 快速清理方案
-- 详细重构实施步骤
-- 风险控制策略
+## 开发环境
 
-## 📖 快速开始指南
+### 环境要求
+- **Android Studio**: Arctic Fox 或更高版本
+- **Android SDK**: API Level 21+ (Android 5.0+)
+- **Java**: JDK 8 或更高版本
+- **Gradle**: 7.0+
 
-### 新手入门 🔰
-1. 阅读 [项目当前状态](./current-project-status.md) 了解项目概况
-2. 学习 [架构原则](./architecture-principles.md) 掌握设计理念
-3. 参考 [API使用指南](./api-usage-guide.md) 开始开发
+### 依赖配置
+```gradle
+// 核心 IM SDK
+implementation 'io.openim:android-sdk:latest'
 
-### 功能开发 🛠️
-1. 查看 [MVP发布说明](./mvp-release-notes.md) 了解已有功能
-2. 阅读 [Week 2 Day 6实现](./week2-day6-multistream-implementation.md) 了解最新特性
-3. 参考 [API使用指南](./api-usage-guide.md) 进行功能集成
+// RTC 引擎
+implementation 'io.livekit:android-sdk:latest'
 
-### 架构重构 🏗️
-1. 了解 [重构方案](./callviewmodel-refactor-proposal.md) 的必要性
-2. 对比 [重构选择分析](./refactor-options-analysis.md) 选择最佳方案
-3. 按照 [实施计划](./refactor-implementation-plan.md) 执行重构
+// 路由管理
+implementation 'com.alibaba:arouter-api:latest'
+annotationProcessor 'com.alibaba:arouter-compiler:latest'
 
-## 🎯 项目状态概览
+// UI 相关
+implementation 'androidx.databinding:databinding-runtime:latest'
+implementation 'androidx.lifecycle:lifecycle-viewmodel:latest'
+```
 
-### ✅ 已完成功能
-- **1v1音视频通话**: 完整功能，稳定可用
-- **群组音视频通话**: MVP v1.0 完成，支持最多9人
-- **多路视频流管理**: Week 2 Day 6 功能完整
-- **统一异常处理**: LogExceptionHandler实现，支持业务流程追踪
-- **增强日志系统**: L.java增强，完全向后兼容
-- **信令驱动架构**: 严格遵循设计原则
+### 权限配置
+```xml
+<!-- 网络权限 -->
+<uses-permission android:name="android.permission.INTERNET" />
+<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-### 🟡 进行中/计划中
-- **代码重构**: CallViewModel拆分重构（建议MVP后进行）
-- **错误处理优化**: 用户友好的错误提示机制
-- **性能测试**: 大规模场景下的性能验证
-- **UI细节完善**: 交互体验优化
+<!-- 音视频权限 -->
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.RECORD_AUDIO" />
+<uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
-### 📊 技术指标
-- **编译状态**: ✅ BUILD SUCCESSFUL
-- **架构合规**: ✅ 信令驱动架构
-- **功能完整性**: MVP v1.0 (100%) + Week 2 Day 6 (100%)
-- **代码质量**: 基础良好，重构后可进一步提升
+<!-- 其他必要权限 -->
+<uses-permission android:name="android.permission.WAKE_LOCK" />
+<uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+```
 
-## 📞 技术支持
+## 快速开始
 
-### 开发问题
-- 查看 [已知问题](./mvp-release-notes.md#已知问题和限制)
-- 参考 [架构原则](./architecture-principles.md) 检查合规性
-- 使用 [API使用指南](./api-usage-guide.md) 进行开发
+### 1. 克隆项目
+```bash
+git clone https://github.com/openimsdk/open-im-android-demo.git
+cd open-im-android-demo
+```
 
-### 文档反馈
-如果发现文档问题或需要补充，请在开发过程中及时更新相关文档，确保文档与代码实现保持同步。
+### 2. 配置参数
+在 `Demo/app/src/main/java/io/openim/android/demo/` 中配置：
+- OpenIM 服务器地址
+- LiveKit 服务器配置
+- 应用 ID 和密钥
+
+### 3. 编译运行
+```bash
+./gradlew assembleDebug
+```
+
+### 4. 测试群组通话
+1. 创建群聊
+2. 点击群组通话按钮
+3. 选择通话成员
+4. 发起音视频通话
+
+## 日志监控
+
+项目集成了完善的日志系统，便于开发调试和线上问题排查：
+
+```java
+// 业务流程日志
+L.businessFlow("群组成员选择", "启动InitiateGroupActivity");
+L.businessFlow("群组信令构建", "参与者数量: " + participants.size());
+
+// 关键操作日志  
+L.critical("群组通话发起", "发送群组通话信令成功");
+L.critical("成员响应处理", "收到成员接听信令");
+
+// 异常处理日志
+LogExceptionHandler.handle("群组通话异常", exception);
+```
+
+## 故障排查
+
+### 常见问题
+
+1. **选择成员后变成1v1通话**
+   - 检查 `InitiateGroupActivity` 的 `IS_SELECT_MEMBER` 参数
+   - 确认信令中 `sessionType` 为 3 (群组类型)
+   - 查看 `CallStateManager.isGroupCall()` 判断逻辑
+
+2. **视频无法显示**
+   - 检查摄像头权限
+   - 确认 LiveKit Room 连接状态
+   - 查看 `MultiStreamManager` 视频流管理
+
+3. **信令发送失败**
+   - 确认 OpenIM 连接状态
+   - 检查网络连接
+   - 查看信令格式是否正确
+
+### 调试技巧
+- 启用详细日志输出
+- 使用 ADB 查看实时日志
+- 监控网络请求和响应
+- 检查 LiveKit Dashboard
+
+## 性能优化
+
+### 1. 视频渲染优化
+```java
+// SurfaceView 复用池
+VideoResourcePool.getInstance().reuseVideoView(surfaceView);
+
+// 按需订阅视频流
+if (member.isVideoEnabled()) {
+    room.subscribeVideoTrack(member.getUserID());
+}
+```
+
+### 2. 内存管理
+```java
+// 及时释放资源
+@Override
+protected void onDestroy() {
+    super.onDestroy();
+    MultiStreamManager.getInstance().cleanup();
+    CallStateManager.getInstance().reset();
+}
+```
+
+### 3. 网络优化
+- 自适应码率调节
+- 信令重传机制  
+- 弱网环境降级策略
+
+## 代码规范
+
+### 命名规范
+- **类名**: PascalCase (如 `GroupCallDialog`)
+- **方法名**: camelCase (如 `buildGroupSignaling`)
+- **常量**: UPPER_SNAKE_CASE (如 `IS_SELECT_MEMBER`)
+
+### 注释规范
+```java
+/**
+ * 群组通话对话框
+ * 负责显示九宫格视频布局和通话控制
+ * 
+ * @author OpenIM Team
+ * @since v3.0.0
+ */
+public class GroupCallDialog extends BaseDialog {
+    // 实现细节...
+}
+```
+
+## 贡献指南
+
+1. Fork 项目到个人账户
+2. 创建功能分支 (`git checkout -b feature/your-feature`)
+3. 提交代码 (`git commit -am 'Add some feature'`)
+4. 推送分支 (`git push origin feature/your-feature`)
+5. 创建 Pull Request
+
+## 许可证
+
+本项目基于 [Apache License 2.0](LICENSE) 开源协议。
+
+## 联系我们
+
+- **官网**: https://www.openim.io
+- **文档**: https://docs.openim.io  
+- **社区**: https://github.com/openimsdk/open-im-android-demo
+- **邮箱**: contact@openim.io
 
 ---
 
-**最后更新**: 2024年12月  
-**项目状态**: MVP v1.0 + Week 2 Day 6 多路视频流功能完成  
-**架构状态**: ✅ 编译成功，信令驱动架构合规
+## 更新日志
+
+### v3.5.0 (2024-01-15)
+- ✨ 新增群组音视频通话功能
+- 🐛 修复 Java 兼容性问题 (List.of → Arrays.asList)
+- 📝 完善日志监控体系
+- ⚡ 优化视频资源管理
+
+### v3.4.0 (2023-12-01)  
+- 🚀 升级 LiveKit SDK
+- 💯 完善异常处理机制
+- 🎨 优化 UI 交互体验
+
+---
+
+**Built with ❤️ by OpenIM Team**
