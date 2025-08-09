@@ -65,10 +65,11 @@ import io.openim.android.ouicore.vm.SelectTargetVM;
 import io.openim.android.ouicore.widget.CommonDialog;
 import io.openim.android.ouicore.widget.WebViewActivity;
 import io.openim.android.sdk.OpenIMClient;
+import io.openim.android.sdk.listener.OnBase;
 import io.openim.android.sdk.models.CardElem;
+import io.openim.android.sdk.models.FriendInfo;
 import io.openim.android.sdk.models.Message;
-
-import java.io.File;
+import io.openim.android.sdk.models.UserInfo;
 
 public class InputExpandFragment extends BaseFragment<ChatVM> {
     public static List<Integer> menuIcons =
@@ -185,9 +186,10 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                             });
                             continue;
                         }
-                        if (null == msg)
-                            msg =
-                                OpenIMClient.getInstance().messageManager.createTextMessage("[" + getString(io.openim.android.ouicore.R.string.unsupported_type) + "]");
+                        if (null == msg) {
+                            // 对于其他文件类型，使用文件消息
+                            msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(path, new File(path).getName());
+                        }
                         vm.sendMsg(msg);
                     }
                 }
@@ -304,9 +306,10 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
      */
     private void showContactCardPicker() {
         try {
-            // 直接启动ForwardToActivity
+            // 直接启动ForwardToActivity，传递名片选择模式参数
             Intent intent = (Intent) ARouter.getInstance()
                 .build(Routes.Contact.FORWARD)
+                .withString("mode", "business_card")
                 .navigation();
             if (intent != null) {
                 contactCardLauncher.launch(intent);
@@ -315,6 +318,7 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                 try {
                     Class<?> activityClass = Class.forName("io.openim.android.ouicontact.ui.ForwardToActivity");
                     Intent directIntent = new Intent(getActivity(), activityClass);
+                    directIntent.putExtra("mode", "business_card");
                     contactCardLauncher.launch(directIntent);
                 } catch (ClassNotFoundException e2) {
                     L.e("ForwardToActivity class not found: " + e2.getMessage());
@@ -423,15 +427,8 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
             String userName = data.getStringExtra(Constants.K_NAME);
             
             if (!TextUtils.isEmpty(userID) && !TextUtils.isEmpty(userName)) {
-                // 显示确认对话框，问是否发送当前联系人信息
-                CommonDialog dialog = new CommonDialog(getActivity());
-                dialog.getMainView().tips.setText("确认发送 " + userName + " 的名片吗？");
-                dialog.getMainView().cancel.setOnClickListener(v -> dialog.dismiss());
-                dialog.getMainView().confirm.setOnClickListener(v -> {
-                    dialog.dismiss();
-                    sendContactCard(userID, userName);
-                });
-                dialog.show();
+                // 直接发送名片，ForwardToActivity已经有确认机制
+                sendContactCard(userID, userName);
             }
         } catch (Exception e) {
             L.e("handleContactCardResult error: " + e.getMessage());
@@ -443,20 +440,64 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
      */
     private void sendContactCard(String userID, String userName) {
         try {
-            // 创建名片数据
+            // 获取完整的用户信息（包括头像）
+            OpenIMClient.getInstance().friendshipManager.getFriendsInfo(new OnBase<List<UserInfo>>() {
+                @Override
+                public void onError(int code, String error) {
+                    // 获取好友信息失败，使用基本信息发送
+                    sendCardWithBasicInfo(userID, userName, "");
+                }
+
+                @Override
+                public void onSuccess(List<UserInfo> userInfos) {
+                    String faceURL = "";
+                    // 查找对应的用户信息
+                    for (UserInfo userInfo : userInfos) {
+                        if (userID.equals(userInfo.getUserID())) {
+                            faceURL = userInfo.getFaceURL() != null ? userInfo.getFaceURL() : "";
+                            break;
+                        }
+                    }
+                    sendCardWithBasicInfo(userID, userName, faceURL);
+                }
+            }, Arrays.asList(userID));
+        } catch (Exception e) {
+            L.e("sendContactCard error: " + e.getMessage());
+            // 异常情况下使用基本信息发送
+            sendCardWithBasicInfo(userID, userName, "");
+        }
+    }
+    
+    /**
+     * 使用基本信息发送名片
+     */
+    private void sendCardWithBasicInfo(String userID, String userName, String faceURL) {
+        try {
+            // 创建名片消息，使用OpenIM SDK的标准名片消息类型
             CardElem cardElem = new CardElem();
             cardElem.setUserID(userID);
             cardElem.setNickname(userName);
+            cardElem.setFaceURL(faceURL);
             
-            // 使用自定义消息发送名片
-            String cardData = "{\"userID\":\"" + userID + "\",\"nickname\":\"" + userName + "\"}";
-            Message cardMsg = OpenIMClient.getInstance().messageManager.createCustomMessage(
-                cardData, "名片", "{\"type\":\"business_card\"}");
+            // 尝试使用createCardMessage方法，如果不存在则使用自定义消息
+            Message cardMsg = null;
+            try {
+                // 尝试使用标准名片消息创建方法
+                cardMsg = OpenIMClient.getInstance().messageManager.createCardMessage(cardElem);
+            } catch (Exception cardException) {
+                // 如果没有createCardMessage方法，使用自定义消息作为备选方案
+                L.e("createCardMessage not available, using custom message: " + cardException.getMessage());
+                String cardData = "{\"userID\":\"" + userID + "\",\"nickname\":\"" + userName + "\",\"faceURL\":\"" + faceURL + "\"}";
+                cardMsg = OpenIMClient.getInstance().messageManager.createCustomMessage(
+                    cardData, "名片", "{\"type\":\"business_card\"}");
+            }
                 
-            vm.sendMsg(cardMsg);
-            Toast.makeText(getContext(), "名片发送成功", Toast.LENGTH_SHORT).show();
+            if (cardMsg != null) {
+                vm.sendMsg(cardMsg);
+                Toast.makeText(getContext(), "名片发送成功", Toast.LENGTH_SHORT).show();
+            }
         } catch (Exception e) {
-            L.e("sendContactCard error: " + e.getMessage());
+            L.e("sendCardWithBasicInfo error: " + e.getMessage());
             Toast.makeText(getContext(), "名片发送失败", Toast.LENGTH_SHORT).show();
         }
     }
