@@ -111,8 +111,16 @@ public class FriendFragment extends BaseFragment<SocialityVM> {
                 if (getItemViewType(position) == ITEM) {
                     ViewHol.ItemViewHo itemViewHo = (ViewHol.ItemViewHo) holder;
                     FriendInfo friendInfo = data.userInfo.getFriendInfo();
-                    itemViewHo.view.avatar.load(friendInfo.getFaceURL());
-                    itemViewHo.view.nickName.setText(friendInfo.getNickname());
+                    
+                    // 防止空指针异常
+                    if (friendInfo != null) {
+                        itemViewHo.view.avatar.load(friendInfo.getFaceURL());
+                        itemViewHo.view.nickName.setText(friendInfo.getNickname());
+                    } else {
+                        // 备用方案：使用UserInfo的信息
+                        itemViewHo.view.avatar.load(data.userInfo.getFaceURL());
+                        itemViewHo.view.nickName.setText(data.userInfo.getNickname());
+                    }
                     itemViewHo.view.select.setVisibility(View.GONE);
                     itemViewHo.view.getRoot().setOnClickListener(v -> {
                         CommonDialog commonDialog = new CommonDialog(holder.itemView.getContext());

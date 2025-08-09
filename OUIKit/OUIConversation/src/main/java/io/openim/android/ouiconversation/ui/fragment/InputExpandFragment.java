@@ -371,10 +371,16 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
                         msg = OpenIMClient.getInstance().messageManager.createImageMessageFromFullPath(filePath);
                     } else if (MediaFileUtil.isVideoType(filePath)) {
                         // 视频文件使用视频消息
-                        String firstFame = MediaFileUtil.saveBitmap(null, Constants.PICTURE_DIR, false);
-                        long duration = MediaFileUtil.getDuration(filePath) / 1000;
-                        msg = OpenIMClient.getInstance().messageManager.createVideoMessageFromFullPath(
-                            filePath, MediaFileUtil.getFileType(filePath).mimeType, duration, firstFame);
+                        try {
+                            long duration = MediaFileUtil.getDuration(filePath) / 1000;
+                            // 使用空字符串作为首帧，让SDK自动处理
+                            msg = OpenIMClient.getInstance().messageManager.createVideoMessageFromFullPath(
+                                filePath, MediaFileUtil.getFileType(filePath).mimeType, duration, "");
+                        } catch (Exception videoException) {
+                            L.e("Video processing failed, treating as file: " + videoException.getMessage());
+                            // 视频处理失败，降级为文件消息
+                            msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(filePath, new File(filePath).getName());
+                        }
                     } else {
                         // 其他文件使用文件消息
                         msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(filePath, new File(filePath).getName());
