@@ -1121,6 +1121,16 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
         }
     }
 
+    /**
+     * 撤回消息
+     *
+     * @param message
+     */
+    public void revokeMessage(Message message) {
+        OpenIMClient.getInstance().messageManager.revokeMessageV2(new IMUtil.IMCallBack<>(),
+            conversationID, message.getClientMsgID());
+    }
+
     @Override
     public void onFriendInfoChanged(FriendInfo u) {
         if (!TextUtils.isEmpty(u.getFaceURL()) && !TextUtils.isEmpty(userOriginAvatar) && !userOriginAvatar.equals(u.getFaceURL()))

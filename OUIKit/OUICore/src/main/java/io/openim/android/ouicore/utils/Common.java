@@ -471,5 +471,13 @@ public class Common {
       return (T) GsonHel.fromJson(GsonHel.toJson(t),
             t.getClass());
     }
+
+    public static void toMap(Message message, View v) {
+        if (TextUtils.isEmpty(WebViewActivity.mapAppKey)) {
+            Toast.makeText(v.getContext(), BaseApp.inst().getString(io.openim.android.ouicore.R.string.no_map_key), Toast.LENGTH_LONG).show();
+            return;
+        }
+        v.getContext().startActivity(new Intent(v.getContext(), WebViewActivity.class).putExtra(WebViewActivity.LOAD_URL, "https://apis.map.qq.com/uri/v1/geocoder?coord=" + message.getLocationElem().getLatitude() + "," + message.getLocationElem().getLongitude() + "&referer=" + WebViewActivity.mapAppKey).putExtra(WebViewActivity.TITLE, v.getContext().getString(R.string.location)));
+    }
 }
 

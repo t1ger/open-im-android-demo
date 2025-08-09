@@ -15,6 +15,21 @@ public class MsgExpand {
     public boolean isChoice;
     //此item 应该显示时间
     public boolean isShowTime;
-    //富文本
+    //地址信息（发送位置才有）
+    public LocationInfo locationInfo;
+    //富文本（at 消息、表情）
     public transient SpannableStringBuilder sequence;
+    //oa 通知
+    public OANotification oaNotification;
+    //群公告、消息通知
+    public NotificationMsg notificationMsg;
+    //普通通知 富文本
+    public CharSequence tips;
+    // ---呼叫记录---
+    public CallHistory callHistory;
+    // 呼叫时长
+    public String callDuration;
+    // ------
+    //自定义表情
+    public CustomEmojiEntity customEmoji;
 }
