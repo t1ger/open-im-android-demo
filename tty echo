@@ -1,61 +1,61 @@
-.gitignore
-Demo/app/libs/EasyWindow-10.2.aar
-Demo/app/libs/com.oliver.record.aar
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/BaseCallDialog.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallDialog.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallDialogFactory.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallDialog_DEPRECATED.md
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/CallingServiceImp.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/GroupCallDialog.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/SignalingProcessor.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/SingleCallDialog.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/adapter/GroupMemberAdapter.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/demo/MultiStreamDemoActivity.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/GroupCallMember.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/MultiPartySignaling.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/PerformanceSummary.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/entity/StreamStatistics.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/GroupCallManager.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/MultiStreamManager.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/SpeakerManager.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/manager/VideoBindingManager.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/monitor/LightweightPerformanceMonitor.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/state/CallStateManager.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/state/DialogSwitchStateMachine.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/utils/SignalingDeduplicator.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/utils/VideoResourcePool.java
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/utils/VideoStreamMonitor.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/vm/CallViewModel.kt
-OUIKit/OUICalling/src/main/java/io/openim/android/ouicalling/vm/CallingVM.java
-OUIKit/OUICalling/src/main/res/layout/activity_demo.xml
-OUIKit/OUIConversation/build.gradle
-OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/ui/ChatActivity.java
-OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/vm/ChatVM.java
-OUIKit/OUIConversation/src/main/res/layout/activity_chat.xml
-OUIKit/OUICore/build.gradle
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/config/CallingConfig.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/ExUserInfo.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/FriendSelectable.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/GroupMemberSelectable.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/entity/SelectableUser.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/factory/SignalingInfoFactory.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/im/IMUtil.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/im/IMUtilSignalingPatch.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/utils/L.java
-OUIKit/OUICore/src/main/java/io/openim/android/ouicore/utils/LogExceptionHandler.java
-OUIKit/OUIGroup/src/main/java/io/openim/android/ouigroup/ui/InitiateGroupActivity.java
-README.md
-build.gradle
-docs/README.md
-docs/api-usage-guide.md
-docs/architecture-compliance-fix.md
-docs/architecture-principles.md
-docs/call-dialog-architecture-refactor.md
-docs/call-dialog-migration-guide.md
-docs/current-project-status.md
-docs/group-audio-video-progress-tracking.md
-docs/mvp-release-notes.md
-docs/week2-day6-multistream-implementation.md
-gradle.properties
-tty echo
-"\347\276\244\347\273\204\351\237\263\350\247\206\351\242\221\346\236\266\346\236\204\
+[1mdiff --git a/OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/ui/fragment/InputExpandFragment.java b/OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/ui/fragment/InputExpandFragment.java[m
+[1mindex 7980504..937d8dc 100644[m
+[1m--- a/OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/ui/fragment/InputExpandFragment.java[m
+[1m+++ b/OUIKit/OUIConversation/src/main/java/io/openim/android/ouiconversation/ui/fragment/InputExpandFragment.java[m
+[36m@@ -65,10 +65,11 @@[m [mimport io.openim.android.ouicore.vm.SelectTargetVM;[m
+ import io.openim.android.ouicore.widget.CommonDialog;[m
+ import io.openim.android.ouicore.widget.WebViewActivity;[m
+ import io.openim.android.sdk.OpenIMClient;[m
+[32m+[m[32mimport io.openim.android.sdk.listener.OnBase;[m
+ import io.openim.android.sdk.models.CardElem;[m
+[32m+[m[32mimport io.openim.android.sdk.models.FriendInfo;[m
+ import io.openim.android.sdk.models.Message;[m
+[31m-[m
+[31m-import java.io.File;[m
+[32m+[m[32mimport io.openim.android.sdk.models.UserInfo;[m
+ [m
+ public class InputExpandFragment extends BaseFragment<ChatVM> {[m
+     public static List<Integer> menuIcons =[m
+[36m@@ -185,9 +186,10 @@[m [mpublic class InputExpandFragment extends BaseFragment<ChatVM> {[m
+                             });[m
+                             continue;[m
+                         }[m
+[31m-                        if (null == msg)[m
+[31m-                            msg =[m
+[31m-                                OpenIMClient.getInstance().messageManager.createTextMessage("[" + getString(io.openim.android.ouicore.R.string.unsupported_type) + "]");[m
+[32m+[m[32m                        if (null == msg) {[m
+[32m+[m[32m                            // 对于其他文件类型，使用文件消息[m
+[32m+[m[32m                            msg = OpenIMClient.getInstance().messageManager.createFileMessageFromFullPath(path, new File(path).getName());[m
+[32m+[m[32m                        }[m
+                         vm.sendMsg(msg);[m
+                     }[m
+                 }[m
+[36m@@ -304,9 +306,10 @@[m [mpublic class InputExpandFragment extends BaseFragment<ChatVM> {[m
+      */[m
+     private void showContactCardPicker() {[m
+         try {[m
+[31m-            // 直接启动ForwardToActivity[m
+[32m+[m[32m            // 直接启动ForwardToActivity，传递名片选择模式参数[m
+             Intent intent = (Intent) ARouter.getInstance()[m
+                 .build(Routes.Contact.FORWARD)[m
+[32m+[m[32m                .withString("mode", "business_card")[m
+                 .navigation();[m
+             if (intent != null) {[m
+                 contactCardLauncher.launch(intent);[m
+[36m@@ -315,6 +318,7 @@[m [mpublic class InputExpandFragment extends BaseFragment<ChatVM> {[m
+                 try {[m
+                     Class<?> activityClass = Class.forName("io.openim.android.ouicontact.ui.ForwardToActivity");[m
+                     Intent directIntent = new Intent(getActivity(), activityClass);[m
+[32m+[m[32m                    directIntent.putExtra("mode", "business_card");[m
+                     contactCardLauncher.launch(directIntent);[m
+                 } catch (ClassNotFoundException e2) {[m
+                     L.e("ForwardToActivity class not found: " + e2.getMessage());[m
+[36m@@ -423,15 +427,8 @@[m [mpublic class InputExpandFragment extends BaseFragment<ChatVM> {[m
+             String userName = data.getStringExtra(Constants.K_NAME);[m
+             [m
+             if (!TextUtils.isEmpty(userID) && !TextUtils.isEmpty(userName)) {[m
+[31m-                // 显示确认对话框，问是否发送当前联系人信息[m
+[31m-                CommonDialog dialog = new CommonDialog(getActivity());[m
+[31m-                dialog.getMainView().tips.setText("确认发送 " + userName + " 的名片吗？");[m
+[31m-                dialog.getMainView().cancel.setOnClickListener(v -> dialog.dismiss());[m
+[31m-                dialog.getMainView().co
