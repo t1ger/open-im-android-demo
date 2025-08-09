@@ -20,6 +20,7 @@ import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupWindow;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.GridLayoutManager;
@@ -93,6 +94,7 @@ public class MessageViewHolder {
                                                            int viewType) {
         if (viewType == Constants.LOADING) return new LoadingView(parent);
         if (viewType == MessageType.PICTURE) return new IMGView(parent);
+        if (viewType == 105) return new FileView(parent);  // 105 = 文件消息类型
         return new TXTView(parent);
     }
 
@@ -403,5 +405,119 @@ public class MessageViewHolder {
             toPreview(v.content2, url, null);
         }
 
+    }
+
+    public static class FileView extends MessageViewHolder.MsgViewHolder {
+
+        public FileView(ViewGroup itemView) {
+            super(itemView);
+        }
+
+        @Override
+        protected int getLeftInflatedId() {
+            return R.layout.layout_msg_txt_left;  // 使用文本消息布局作为代替
+        }
+
+        @Override
+        protected int getRightInflatedId() {
+            return R.layout.layout_msg_txt_right; // 使用文本消息布局作为代替
+        }
+
+        @Override
+        protected void bindLeft(View itemView, Message message) {
+            LayoutMsgTxtLeftBinding v = LayoutMsgTxtLeftBinding.bind(itemView);
+            v.avatar.load(message.getSenderFaceUrl(), message.getSenderNickname());
+            String fileName = "文件";
+            try {
+                if (message.getFileElem() != null && !TextUtils.isEmpty(message.getFileElem().getFileName())) {
+                    fileName = "[文件] " + message.getFileElem().getFileName();
+                    // 添加文件大小信息
+                    long fileSize = message.getFileElem().getFileSize();
+                    if (fileSize > 0) {
+                        String sizeStr = formatFileSize(fileSize);
+                        fileName += " (" + sizeStr + ")";
+                    }
+                }
+            } catch (Exception e) {
+                L.e("FileView bindLeft error: " + e.getMessage());
+                fileName = "[文件] 未知文件";
+            }
+            v.content.setText(fileName);
+            
+            // 添加点击事件打开文件
+            v.content.setOnClickListener(new OnDedrepClickListener() {
+                @Override
+                public void click(View v) {
+                    openFile(message);
+                }
+            });
+        }
+
+        @Override
+        protected void bindRight(View itemView, Message message) {
+            LayoutMsgTxtRightBinding v = LayoutMsgTxtRightBinding.bind(itemView);
+            v.avatar2.load(message.getSenderFaceUrl(), message.getSenderNickname());
+            v.sendState2.setSendState(message.getStatus());
+            String fileName = "文件";
+            try {
+                if (message.getFileElem() != null && !TextUtils.isEmpty(message.getFileElem().getFileName())) {
+                    fileName = "[文件] " + message.getFileElem().getFileName();
+                    // 添加文件大小信息
+                    long fileSize = message.getFileElem().getFileSize();
+                    if (fileSize > 0) {
+                        String sizeStr = formatFileSize(fileSize);
+                        fileName += " (" + sizeStr + ")";
+                    }
+                }
+            } catch (Exception e) {
+                L.e("FileView bindRight error: " + e.getMessage());
+                fileName = "[文件] 未知文件";
+            }
+            v.content2.setText(fileName);
+            
+            // 添加点击事件打开文件
+            v.content2.setOnClickListener(new OnDedrepClickListener() {
+                @Override
+                public void click(View v) {
+                    openFile(message);
+                }
+            });
+        }
+        
+        /**
+         * 格式化文件大小
+         */
+        private String formatFileSize(long size) {
+            if (size < 1024) {
+                return size + "B";
+            } else if (size < 1024 * 1024) {
+                return String.format("%.1fKB", size / 1024.0);
+            } else if (size < 1024 * 1024 * 1024) {
+                return String.format("%.1fMB", size / (1024.0 * 1024.0));
+            } else {
+                return String.format("%.1fGB", size / (1024.0 * 1024.0 * 1024.0));
+            }
+        }
+        
+        /**
+         * 打开文件
+         */
+        private void openFile(Message message) {
+            try {
+                if (message.getFileElem() != null) {
+                    String sourceUrl = message.getFileElem().getSourceUrl();
+                    String fileName = message.getFileElem().getFileName();
+                    
+                    if (!TextUtils.isEmpty(sourceUrl)) {
+                        // 可以在这里添加文件下载和打开逻辑
+                        Toast.makeText(itemView.getContext(), "正在打开文件: " + fileName, Toast.LENGTH_SHORT).show();
+                        // TODO: 实现文件下载和打开功能
+                    }
+                }
+            } catch (Exception e) {
+                L.e("openFile error: " + e.getMessage());
+                Toast.makeText(itemView.getContext(), "文件打开失败", Toast.LENGTH_SHORT).show();
+            }
+        }
     }
 }
