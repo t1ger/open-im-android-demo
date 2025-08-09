@@ -304,11 +304,23 @@ public class InputExpandFragment extends BaseFragment<ChatVM> {
      */
     private void showContactCardPicker() {
         try {
-            ARouter.getInstance()
+            // 直接启动ForwardToActivity
+            Intent intent = (Intent) ARouter.getInstance()
                 .build(Routes.Contact.FORWARD)
-                .navigation(getActivity(), (context, postcard) -> {
-                    contactCardLauncher.launch(new Intent(getActivity(), postcard.getDestination()));
-                });
+                .navigation();
+            if (intent != null) {
+                contactCardLauncher.launch(intent);
+            } else {
+                // 备用方案：直接创建 Intent
+                try {
+                    Class<?> activityClass = Class.forName("io.openim.android.ouicontact.ui.ForwardToActivity");
+                    Intent directIntent = new Intent(getActivity(), activityClass);
+                    contactCardLauncher.launch(directIntent);
+                } catch (ClassNotFoundException e2) {
+                    L.e("ForwardToActivity class not found: " + e2.getMessage());
+                    Toast.makeText(getContext(), "联系人选择器不可用", Toast.LENGTH_SHORT).show();
+                }
+            }
         } catch (Exception e) {
             L.e("showContactCardPicker error: " + e.getMessage());
             Toast.makeText(getContext(), "联系人选择器启动失败", Toast.LENGTH_SHORT).show();
