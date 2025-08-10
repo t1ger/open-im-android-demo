@@ -371,49 +371,16 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     };
 
     public void signalingInvite(SignalingInfo signalingInfo) {
-        // ✅ 缓存当前信令信息
-        this.currentSignalingInfo = signalingInfo;
-        
-        // ✅ 恢复原有逻辑为主流程，保证单人通话不受影响
+        // 🔧 恢复 main 分支的简单、正确实现，修复单人音视频功能
         sendSignaling(Constants.MsgType.callingInvite, signalingInfo, new OnMsgSendCallback() {
             @Override
             public void onSuccess(Message s) {
                 getTokenAndConnectRoom(signalingInfo, new OnBase<SignalingCertificate>() {
                     @Override
                     public void onSuccess(SignalingCertificate data) {
-                        // ✅ 延迟分支：仅在连接房间时区分群组和单人逻辑
-                        if (CallStateManager.isGroupCall(signalingInfo)) {
-                            // 群组通话：发起方连接逻辑
-                            connectToGroupRoomAsCaller(data, signalingInfo);
-                        } else {
-                            // 单人通话：保持原有逻辑
-                            connectToRoom(data);
-                        }
-                    }
-                    
-                    @Override
-                    public void onError(int code, String error) {
-                        // ✅ 统一错误处理
-                        L.e("CallingVM", "获取令牌失败: " + error);
-                        if (CallStateManager.isGroupCall(signalingInfo)) {
-                            handleGroupCallError("群组通话发起失败", new Exception(error));
-                        } else {
-                            // 单人通话错误处理（保持兼容）
-                            dismissUI();
-                        }
+                        connectToRoom(data);
                     }
                 });
-            }
-            
-            @Override
-            public void onError(int code, String error) {
-                // ✅ 统一信令发送错误处理
-                L.e("CallingVM", "发送邀请信令失败: " + error);
-                if (CallStateManager.isGroupCall(signalingInfo)) {
-                    handleGroupCallError("群组通话邀请失败", new Exception(error));
-                } else {
-                    dismissUI();
-                }
             }
         });
     }

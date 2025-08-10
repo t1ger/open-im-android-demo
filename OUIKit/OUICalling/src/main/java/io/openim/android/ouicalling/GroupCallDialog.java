@@ -11,6 +11,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import io.openim.android.ouicalling.adapter.GroupMemberAdapter;
+import io.openim.android.ouicalling.adapter.WeChatGroupMemberAdapter;
+import io.openim.android.ouicalling.layout.WeChatGridLayoutManager;
 import io.openim.android.ouicalling.databinding.DialogGroupCallBinding;
 import io.openim.android.ouicalling.entity.GroupCallMember;
 import io.openim.android.ouicalling.entity.CallMemberState;
@@ -33,8 +35,14 @@ public class GroupCallDialog extends BaseCallDialog {
     
     private DialogGroupCallBinding groupView;
     private GroupMemberAdapter groupMemberAdapter;
+    private WeChatGroupMemberAdapter weChatGroupMemberAdapter;
+    private WeChatGridLayoutManager weChatGridLayoutManager;
     private android.os.Handler updateHandler;
     private Runnable updateTask;
+    
+    // 微信风格相关属性
+    private boolean useWeChatStyle = true;
+    private boolean mainVideoMode = false;
     
     public GroupCallDialog(@NonNull Context context, CallingService callingService, boolean isCallOut) {
         super(context, callingService, isCallOut);
@@ -67,6 +75,51 @@ public class GroupCallDialog extends BaseCallDialog {
             return;
         }
         
+        if (useWeChatStyle) {
+            initWeChatStyleGrid();
+        } else {
+            initClassicGrid();
+        }
+        
+        L.d("GroupCallDialog", "群组成员网格布局初始化完成，风格: " + (useWeChatStyle ? "微信" : "经典"));
+    }
+    
+    /**
+     * 初始化微信风格九宫格
+     */
+    private void initWeChatStyleGrid() {
+        // 创建微信风格适配器
+        weChatGroupMemberAdapter = new WeChatGroupMemberAdapter(
+            context, 
+            callingVM.getResourcePool(), 
+            callingVM.callViewModel
+        );
+        
+        // 创建微信风格布局管理器
+        weChatGridLayoutManager = new WeChatGridLayoutManager(context);
+        
+        // 设置成员点击监听器，支持切换主画面
+        weChatGroupMemberAdapter.setOnMemberClickListener(new WeChatGroupMemberAdapter.OnMemberClickListener() {
+            @Override
+            public void onMemberClick(GroupCallMember member, int position) {
+                handleMemberClick(member, position);
+            }
+            
+            @Override
+            public void onMemberLongClick(GroupCallMember member, int position) {
+                handleMemberLongClick(member, position);
+            }
+        });
+        
+        // 应用布局和适配器
+        groupView.viewRenderers.setLayoutManager(weChatGridLayoutManager);
+        groupView.viewRenderers.setAdapter(weChatGroupMemberAdapter);
+    }
+    
+    /**
+     * 初始化经典网格布局（保持向后兼容）
+     */
+    private void initClassicGrid() {
         // 创建群组成员适配器
         groupMemberAdapter = new GroupMemberAdapter(context, callingVM.getResourcePool(), callingVM.callViewModel);
         
@@ -77,8 +130,6 @@ public class GroupCallDialog extends BaseCallDialog {
         
         // 设置RecyclerView引用用于视频绑定刷新
         groupMemberAdapter.setRecyclerView(groupView.viewRenderers);
-        
-        L.d("GroupCallDialog", "群组成员网格布局初始化完成");
     }
     
     @Override
@@ -400,10 +451,44 @@ public class GroupCallDialog extends BaseCallDialog {
      * 更新群组成员网格布局
      */
     private void updateGroupMemberGrid() {
-        if (groupMemberAdapter == null || groupView == null) return;
-        
         List<GroupCallMember> members = new ArrayList<>(callingVM.groupMembers);
         int memberCount = members.size();
+        
+        if (useWeChatStyle) {
+            updateWeChatStyleGrid(members, memberCount);
+        } else {
+            updateClassicGrid(members, memberCount);
+        }
+        
+        L.d("GroupCallDialog", "群组成员网格更新完成，成员数: " + memberCount + ", 风格: " + (useWeChatStyle ? "微信" : "经典"));
+    }
+    
+    /**
+     * 更新微信风格网格
+     */
+    private void updateWeChatStyleGrid(List<GroupCallMember> members, int memberCount) {
+        if (weChatGroupMemberAdapter == null || weChatGridLayoutManager == null || groupView == null) {
+            return;
+        }
+        
+        // 更新适配器数据
+        weChatGroupMemberAdapter.updateMembers(members);
+        
+        // 更新布局管理器成员数量
+        weChatGridLayoutManager.updateMemberCount(memberCount);
+        weChatGridLayoutManager.setMainVideoMode(mainVideoMode);
+        
+        L.d("GroupCallDialog", "微信风格网格更新: 成员数=" + memberCount + 
+            ", 主视频模式=" + mainVideoMode + ", " + weChatGridLayoutManager.getLayoutInfo());
+    }
+    
+    /**
+     * 更新经典网格
+     */
+    private void updateClassicGrid(List<GroupCallMember> members, int memberCount) {
+        if (groupMemberAdapter == null || groupView == null) {
+            return;
+        }
         
         // 根据成员数量动态调整网格布局
         if (groupView.viewRenderers != null) {
@@ -416,8 +501,6 @@ public class GroupCallDialog extends BaseCallDialog {
         
         // 更新适配器数据
         groupMemberAdapter.updateMembers(members);
-        
-        L.d("GroupCallDialog", "群组成员网格更新完成，成员数: " + memberCount);
     }
     
     /**
@@ -503,9 +586,99 @@ public class GroupCallDialog extends BaseCallDialog {
     }
     
     /**
+     * 处理成员点击事件（微信风格）
+     */
+    private void handleMemberClick(GroupCallMember member, int position) {
+        try {
+            L.d("GroupCallDialog", "成员点击: " + member.getNickname() + ", 位置: " + position);
+            
+            // 切换主画面
+            toggleMainVideo(position);
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("GroupCallDialog", "处理成员点击", 
+                LogExceptionHandler.ExceptionType.UI_ERROR, e);
+        }
+    }
+    
+    /**
+     * 处理成员长按事件（微信风格）
+     */
+    private void handleMemberLongClick(GroupCallMember member, int position) {
+        try {
+            L.d("GroupCallDialog", "成员长按: " + member.getNickname() + ", 位置: " + position);
+            
+            // 可以扩展长按菜单，比如静音、移除等操作
+            // showMemberContextMenu(member, position);
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("GroupCallDialog", "处理成员长按", 
+                LogExceptionHandler.ExceptionType.UI_ERROR, e);
+        }
+    }
+    
+    /**
+     * 切换主视频显示
+     */
+    private void toggleMainVideo(int position) {
+        if (weChatGroupMemberAdapter == null) return;
+        
+        int currentMainPosition = weChatGroupMemberAdapter.getMainVideoPosition();
+        
+        if (currentMainPosition == position) {
+            // 如果点击的是当前主视频，则取消主视频模式
+            weChatGroupMemberAdapter.setMainVideoMember(-1);
+            setMainVideoMode(false);
+            L.d("GroupCallDialog", "取消主视频模式");
+        } else {
+            // 设置新的主视频成员
+            weChatGroupMemberAdapter.setMainVideoMember(position);
+            setMainVideoMode(true);
+            L.d("GroupCallDialog", "设置主视频: 位置 " + position);
+        }
+    }
+    
+    /**
+     * 设置主视频模式
+     */
+    private void setMainVideoMode(boolean mainMode) {
+        this.mainVideoMode = mainMode;
+        
+        if (weChatGridLayoutManager != null) {
+            weChatGridLayoutManager.setMainVideoMode(mainMode);
+        }
+        
+        // 触发布局更新
+        if (groupView != null && groupView.viewRenderers != null) {
+            groupView.viewRenderers.getLayoutManager().requestLayout();
+        }
+    }
+    
+    /**
+     * 设置是否使用微信风格
+     */
+    public void setUseWeChatStyle(boolean useWeChatStyle) {
+        this.useWeChatStyle = useWeChatStyle;
+    }
+    
+    /**
+     * 获取是否使用微信风格
+     */
+    public boolean isUseWeChatStyle() {
+        return useWeChatStyle;
+    }
+    
+    /**
      * 获取群组成员适配器（用于测试或特殊场景）
      */
     public GroupMemberAdapter getGroupMemberAdapter() {
         return groupMemberAdapter;
+    }
+    
+    /**
+     * 获取微信风格群组成员适配器
+     */
+    public WeChatGroupMemberAdapter getWeChatGroupMemberAdapter() {
+        return weChatGroupMemberAdapter;
     }
 }

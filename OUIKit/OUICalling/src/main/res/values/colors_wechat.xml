@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 微信风格色彩定义 -->
+<resources>
+    
+    <!-- 微信视频通话背景色 -->
+    <color name="wechat_video_bg">#FF2C2C2E</color>
+    
+    <!-- 微信九宫格分隔线颜色 -->
+    <color name="wechat_grid_divider">#FF1C1C1E</color>
+    
+    <!-- 微信遮罩层颜色 -->
+    <color name="wechat_overlay_bg">#99000000</color>
+    
+    <!-- 微信选中边框颜色 -->
+    <color name="wechat_selected_border">#FF07C160</color>
+    
+    <!-- 微信说话指示器颜色 -->
+    <color name="wechat_speaking_indicator">#FF07C160</color>
+    
+    <!-- 微信状态文字颜色 -->
+    <color name="wechat_status_text">#FFFFFFFF</color>
+    
+    <!-- 微信控制按钮背景 -->
+    <color name="wechat_control_bg">#99000000</color>
+    
+    <!-- 微信主画面背景 -->
+    <color name="wechat_main_video_bg">#FF000000</color>
+    
+    <!-- 微信网络质量指示器 -->
+    <color name="wechat_network_excellent">#FF07C160</color>
+    <color name="wechat_network_good">#FFFFB300</color>
+    <color name="wechat_network_poor">#FFFA5151</color>
+
+</resources>

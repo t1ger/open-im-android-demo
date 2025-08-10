@@ -1067,20 +1067,35 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
             
             // 信令数据校验
             if (groupSignalingInfo == null) {
-                android.util.Log.e(TAG, "群组信令构建失败，返回null");
+                android.util.Log.e(TAG, "❌ 致命错误：群组信令构建失败，IMUtil.buildGroupSignalingInfo返回null");
+                android.util.Log.e(TAG, "输入参数 - isVideo: " + isVideo + ", groupID: " + groupID + ", memberIds: " + selectedMemberIds);
                 toast("构建通话信令失败，请重试");
                 return;
             }
             
             if (groupSignalingInfo.getInvitation() == null) {
-                android.util.Log.e(TAG, "群组信令Invitation为null");
+                android.util.Log.e(TAG, "❌ 致命错误：群组信令Invitation为null");
                 toast("信令数据异常，请重试");
                 return;
             }
             
-            android.util.Log.d(TAG, "群组信令构建完成 - SessionType: " + groupSignalingInfo.getInvitation().getSessionType());
-            android.util.Log.d(TAG, "群组信令构建完成 - GroupID: " + groupSignalingInfo.getInvitation().getGroupID());
-            android.util.Log.d(TAG, "群组信令构建完成 - 被邀请用户: " + groupSignalingInfo.getInvitation().getInviteeUserIDList());
+            // 🔍 详细的信令验证和调试输出
+            android.util.Log.d(TAG, "✅ 群组信令构建完成，详细信息：");
+            android.util.Log.d(TAG, "   SessionType: " + groupSignalingInfo.getInvitation().getSessionType());
+            android.util.Log.d(TAG, "   期望的GROUP_CHAT值: " + io.openim.android.sdk.enums.ConversationType.GROUP_CHAT);
+            android.util.Log.d(TAG, "   类型匹配: " + (groupSignalingInfo.getInvitation().getSessionType() == io.openim.android.sdk.enums.ConversationType.GROUP_CHAT));
+            android.util.Log.d(TAG, "   GroupID: " + groupSignalingInfo.getInvitation().getGroupID());
+            android.util.Log.d(TAG, "   被邀请用户: " + groupSignalingInfo.getInvitation().getInviteeUserIDList());
+            android.util.Log.d(TAG, "   媒体类型: " + groupSignalingInfo.getInvitation().getMediaType());
+            
+            // 使用简单的判断逻辑进行额外验证（避免循环依赖）
+            boolean isGroupCall = (groupSignalingInfo.getInvitation().getSessionType() == io.openim.android.sdk.enums.ConversationType.GROUP_CHAT);
+            android.util.Log.d(TAG, "   直接判断结果: " + (isGroupCall ? "✅ 群组通话" : "❌ 单人通话"));
+            
+            if (!isGroupCall) {
+                android.util.Log.e(TAG, "⚠️  警告：构建的信令未被识别为群组通话！");
+                android.util.Log.e(TAG, "   这可能导致UI显示单人通话界面而不是群组九宫格");
+            }
             
             callingService.call(groupSignalingInfo);
             android.util.Log.d(TAG, "群组通话信令已发送给CallingService");

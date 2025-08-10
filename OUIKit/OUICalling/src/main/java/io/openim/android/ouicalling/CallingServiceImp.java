@@ -30,6 +30,8 @@ import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.L;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.MediaPlayerUtil;
+import io.openim.android.sdk.enums.ConversationType;
+import io.openim.android.ouicalling.state.CallStateManager;
 import io.openim.android.ouicore.utils.NotificationUtil;
 import io.openim.android.ouicore.utils.Routes;
 import io.openim.android.sdk.OpenIMClient;
@@ -193,16 +195,34 @@ public class CallingServiceImp implements CallingService {
                 return callDialog;
             }
             
-            // 关键修复：使用SignalingProcessor处理信令，确保状态一致性
-            SignalingProcessor.ProcessingResult processingResult = SignalingProcessor.process(signalingInfo);
-            if (!processingResult.isSuccess()) {
-                L.e(TAG, "信令处理失败: " + processingResult.getErrorMessage());
-                // 降级处理：使用原始信令创建单人对话框
-                L.w(TAG, "使用降级策略创建单人通话对话框");
+            // 🔧 关键修复：先验证信令类型，避免被意外修改
+            String originalCallType = CallDialogFactory.getCallTypeDescription(signalingInfo);
+            L.critical(TAG, "原始信令类型: " + originalCallType);
+            
+            // 调试输出：检查SessionType
+            if (signalingInfo.getInvitation() != null) {
+                L.critical(TAG, "SessionType值: " + signalingInfo.getInvitation().getSessionType());
+                L.critical(TAG, "GROUP_CHAT常量: " + ConversationType.GROUP_CHAT);
+                L.critical(TAG, "是否相等: " + (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT));
             }
             
-            // 使用CallDialogFactory创建对应类型的对话框
+            // ✅ 直接使用CallDialogFactory，跳过可能修改信令的SignalingProcessor
+            // 根因修复：SignalingProcessor可能在处理过程中修改原始信令的SessionType
             callDialog = CallDialogFactory.create(context, this, signalingInfo, isCallOut, dismissListener);
+            
+            // 验证创建的对话框类型是否正确
+            String createdDialogType = callDialog.getClass().getSimpleName();
+            L.critical(TAG, "创建的对话框类型: " + createdDialogType);
+            
+            // 如果群组信令却创建了单人对话框，记录关键调试信息
+            boolean isGroupSignaling = CallStateManager.isGroupCall(signalingInfo);
+            boolean isGroupDialog = createdDialogType.equals("GroupCallDialog");
+            if (isGroupSignaling && !isGroupDialog) {
+                L.e(TAG, "❌ 严重错误：群组信令创建了单人对话框！");
+                L.e(TAG, "调试信息 - SessionType: " + signalingInfo.getInvitation().getSessionType());
+                L.e(TAG, "调试信息 - GroupID: " + signalingInfo.getInvitation().getGroupID());
+                L.e(TAG, "调试信息 - InviteeList: " + signalingInfo.getInvitation().getInviteeUserIDList());
+            }
             
             L.businessFlow(TAG, "通话对话框创建", 
                 "类型: " + callDialog.getClass().getSimpleName() + 

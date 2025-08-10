@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 微信风格九宫格成员视频布局 -->
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_margin="1dp"
+    android:background="@color/black"
+    android:clickable="true"
+    android:focusable="true">
+    
+    <!-- 视频渲染区域 -->
+    <io.livekit.android.renderer.TextureViewRenderer
+        android:id="@+id/remoteSpeakerVideoView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:layout_centerInParent="true" />
+    
+    <!-- 头像布局：当视频关闭时显示 -->
+    <RelativeLayout
+        android:id="@+id/avatarRl"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/wechat_video_bg"
+        android:visibility="visible">
+        
+        <!-- 用户头像 -->
+        <io.openim.android.ouicore.widget.AvatarImage
+            android:id="@+id/avatar"
+            android:layout_width="80dp"
+            android:layout_height="80dp"
+            android:layout_centerInParent="true"
+            android:src="@mipmap/ic_my_friend" />
+        
+        <!-- 用户昵称 -->
+        <TextView
+            android:id="@+id/avatarName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_below="@id/avatar"
+            android:layout_centerHorizontal="true"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/white"
+            android:textSize="14sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:shadowColor="@color/black"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="3" />
+    </RelativeLayout>
+    
+    <!-- 顶部信息栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentTop="true"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="@drawable/wechat_top_info_gradient">
+        
+        <!-- 主要说话人指示器 -->
+        <View
+            android:id="@+id/speakingIndicator"
+            android:layout_width="4dp"
+            android:layout_height="16dp"
+            android:background="@drawable/wechat_speaking_indicator"
+            android:visibility="gone" />
+        
+        <!-- 用户状态文字 -->
+        <TextView
+            android:id="@+id/statusText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:text="@string/calling"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:shadowColor="@color/black"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2" />
+        
+        <!-- 网络质量指示器 -->
+        <ImageView
+            android:id="@+id/networkQuality"
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@mipmap/ic_net_excellent"
+            android:visibility="gone" />
+    </LinearLayout>
+    
+    <!-- 底部控制栏 -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_alignParentBottom="true"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:background="@drawable/wechat_bottom_controls_gradient"
+        android:gravity="end|center_vertical">
+        
+        <!-- 用户名称 -->
+        <TextView
+            android:id="@+id/name"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:shadowColor="@color/black"
+            android:shadowDx="1"
+            android:shadowDy="1"
+            android:shadowRadius="2" />
+        
+        <!-- 麦克风状态 -->
+        <ImageView
+            android:id="@+id/micOn"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/wechat_mic_status_bg"
+            android:padding="4dp"
+            android:src="@mipmap/ic_mic_s_on" />
+        
+        <!-- 摄像头状态 -->
+        <ImageView
+            android:id="@+id/cameraOn"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginStart="4dp"
+            android:background="@drawable/wechat_camera_status_bg"
+            android:padding="4dp"
+            android:src="@mipmap/ic_open_camera"
+            android:visibility="gone" />
+    </LinearLayout>
+    
+    <!-- 通话状态遮罩层 -->
+    <RelativeLayout
+        android:id="@+id/callStatusOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@color/wechat_overlay_bg"
+        android:visibility="gone">
+        
+        <TextView
+            android:id="@+id/callStatusText"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:text="@string/call_ended"
+            android:textColor="@color/white"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </RelativeLayout>
+    
+    <!-- 选中边框 -->
+    <View
+        android:id="@+id/selectedBorder"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="@drawable/wechat_selected_border"
+        android:visibility="gone" />
+    
+</RelativeLayout>
