@@ -75,13 +75,11 @@ public class GroupCallDialog extends BaseCallDialog {
             return;
         }
         
-        if (useWeChatStyle) {
-            initWeChatStyleGrid();
-        } else {
-            initClassicGrid();
-        }
+        // 🔧 修复：强制使用微信风格，避免布局冲突
+        useWeChatStyle = true;
+        initWeChatStyleGrid();
         
-        L.d("GroupCallDialog", "群组成员网格布局初始化完成，风格: " + (useWeChatStyle ? "微信" : "经典"));
+        L.d("GroupCallDialog", "GRID_INIT_FIXED: 微信九宫格");
     }
     
     /**
