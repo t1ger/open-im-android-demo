@@ -1059,10 +1059,11 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
             return;
         }
         
-        android.util.Log.d(TAG, "用户选择了 " + selectedMemberIds.size() + " 个成员进行群组通话，isVideo: " + isVideo);
+        android.util.Log.d("GroupCallFlow", "📥 [ChatVM] 用户选择了 " + selectedMemberIds.size() + " 个成员进行群组通话 - isVideo: " + isVideo);
         
         try {
             // ✅ 使用用户选择的成员列表构建群组信令
+            android.util.Log.d("GroupCallFlow", "🔧 [ChatVM] 开始构建群组信令 - isVideo: " + isVideo + ", groupId: " + groupID + ", 成员数: " + selectedMemberIds.size());
             SignalingInfo groupSignalingInfo = IMUtil.buildGroupSignalingInfo(isVideo, groupID, selectedMemberIds);
             
             // 信令数据校验
@@ -1080,7 +1081,7 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
             }
             
             // 🔍 详细的信令验证和调试输出
-            android.util.Log.d(TAG, "✅ 群组信令构建完成，详细信息：");
+            android.util.Log.d("GroupCallFlow", "✅ [ChatVM] 群组信令构建完成，详细信息：");
             android.util.Log.d(TAG, "   SessionType: " + groupSignalingInfo.getInvitation().getSessionType());
             android.util.Log.d(TAG, "   期望的GROUP_CHAT值: " + io.openim.android.sdk.enums.ConversationType.GROUP_CHAT);
             android.util.Log.d(TAG, "   类型匹配: " + (groupSignalingInfo.getInvitation().getSessionType() == io.openim.android.sdk.enums.ConversationType.GROUP_CHAT));
@@ -1097,8 +1098,9 @@ public class ChatVM extends BaseViewModel<ChatVM.ViewAction> implements OnAdvanc
                 android.util.Log.e(TAG, "   这可能导致UI显示单人通话界面而不是群组九宫格");
             }
             
+            android.util.Log.d("GroupCallFlow", "📤 [ChatVM] 发送群组信令给CallingService");
             callingService.call(groupSignalingInfo);
-            android.util.Log.d(TAG, "群组通话信令已发送给CallingService");
+            android.util.Log.d("GroupCallFlow", "✅ [ChatVM] 群组通话信令已成功发送");
             
         } catch (IllegalArgumentException e) {
             android.util.Log.e(TAG, "参数错误: " + e.getMessage(), e);

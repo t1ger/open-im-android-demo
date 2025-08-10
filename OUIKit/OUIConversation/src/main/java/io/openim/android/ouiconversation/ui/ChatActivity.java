@@ -507,7 +507,7 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
                 try {
-                    L.d("ChatActivity", "成员选择返回，resultCode=" + result.getResultCode());
+                    android.util.Log.d("GroupCallFlow", "📥 [ChatActivity] 成员选择返回 - resultCode: " + result.getResultCode());
                     
                     // 重置状态标记，允许下次启动
                     isGroupMemberSelectionActive = false;
@@ -555,7 +555,7 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
                         return;
                     }
                     
-                    L.businessFlow("ChatActivity", "成员选择完成", "数量: " + selectedMemberIds.size() + ", 类型: " + (isVideo ? "视频" : "音频"));
+                    android.util.Log.d("GroupCallFlow", "✅ [ChatActivity] 成员选择完成 - 数量: " + selectedMemberIds.size() + ", 类型: " + (isVideo ? "视频" : "音频"));
                     
                     // 回调ChatVM处理用户选择
                     vm.onGroupMembersSelected(selectedMemberIds, isVideo);
@@ -607,7 +607,7 @@ public class ChatActivity extends BaseActivity<ChatVM, ActivityChatBinding> impl
             isGroupMemberSelectionActive = true;
             
             groupMemberSelectionLauncher.launch(intent);
-            L.businessFlow("ChatActivity", "群组成员选择", "启动，groupId=" + groupId + ", 类型=" + (isVideo ? "视频" : "音频"));
+            android.util.Log.d("GroupCallFlow", "🚀 [ChatActivity] 群组成员选择启动 - groupId: " + groupId + ", 类型: " + (isVideo ? "视频" : "音频"));
             
         } catch (Exception e) {
             // 异常时也重置状态标记

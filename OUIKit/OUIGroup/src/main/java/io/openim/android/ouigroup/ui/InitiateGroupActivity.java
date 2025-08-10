@@ -21,6 +21,7 @@ import java.util.List;
 
 import android.util.Log;
 
+import io.openim.android.ouigroup.debug.GroupCallDebugLogger;
 import io.openim.android.ouicore.adapter.RecyclerViewAdapter;
 import io.openim.android.ouicore.adapter.ViewHol;
 import io.openim.android.ouicore.base.BaseActivity;
@@ -93,8 +94,10 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
         initView();
 
         if (isSelectMember) {
+            GroupCallDebugLogger.logMemberSelectionStart(groupId, getIntent().getBooleanExtra("isVideo", false));
             vm.groupId = groupId;
             // ✅ 修复：在成员选择模式下也需要获取群信息，避免空指针异常
+            GroupCallDebugLogger.logGroupInfoInit(groupId, true);
             vm.getGroupsInfo();
             vm.getGroupMemberList();
         } else
@@ -345,6 +348,10 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                     String groupOwnerId = "";
                     if (vm.groupsInfo.getValue() != null) {
                         groupOwnerId = vm.groupsInfo.getValue().getOwnerUserID();
+                        GroupCallDebugLogger.logGroupInfoResult(true, groupOwnerId);
+                    } else {
+                        GroupCallDebugLogger.logGroupInfoResult(false, null);
+                        GroupCallDebugLogger.logNullPointerHandled("exGroupMembers.observe", "vm.groupsInfo.getValue()为null，使用空字符串作为groupOwnerId");
                     }
                     
                     for (ExGroupMemberInfo memberInfo : vm.exGroupManagement.getValue()) {
@@ -375,6 +382,8 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                 String groupOwnerId = "";
                 if (vm.groupsInfo.getValue() != null) {
                     groupOwnerId = vm.groupsInfo.getValue().getOwnerUserID();
+                } else {
+                    GroupCallDebugLogger.logNullPointerHandled("适配器作用域", "vm.groupsInfo.getValue()仍为null");
                 }
                 boolean isForGroupCall = getIntent().getBooleanExtra("isGroupCall", false);
                 
@@ -402,7 +411,7 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                     exUserInfos.add(exUserInfo);
                 }
                 
-                Log.d("InitiateGroupActivity", "群成员数据加载完成，数量: " + exUserInfos.size());
+                GroupCallDebugLogger.logMemberDataLoaded(exUserInfos.size());
                 adapter.setItems(exUserInfos);
             });
         } else {
@@ -482,10 +491,12 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                         return;
                     }
                     if (isSelectMember) {
+                        GroupCallDebugLogger.logMemberSelectionConfirm(vm.selectedFriendInfo.getValue().size());
                         ArrayList<String> ids = new ArrayList<>();
                         for (FriendInfo friendInfo : vm.selectedFriendInfo.getValue()) {
                             ids.add(friendInfo.getUserID());
                         }
+                        GroupCallDebugLogger.logMemberSelectionResult(ids);
                         setResult(RESULT_OK, new Intent().putStringArrayListExtra(Constants.K_RESULT,
                             ids));
                         finish();
