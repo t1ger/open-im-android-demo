@@ -76,27 +76,48 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
      * 只使用一套布局系统，避免冲突
      */
     private void initUnifiedGridLayout() {
+        android.util.Log.e("GroupCallFlow", "🔧🔧🔧 [initUnifiedGridLayout] 开始初始化统一九宫格布局");
+        
         if (groupView.viewRenderers == null) {
+            android.util.Log.e("GroupCallFlow", "❌ [initUnifiedGridLayout] viewRenderers为null!");
             L.e(TAG, "viewRenderers为null，无法初始化网格布局");
             return;
         }
         
+        android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] viewRenderers已找到");
         GroupCallLogger.logDebug("九宫格初始化", "开始设置GridLayoutManager和GroupMemberAdapter");
         
-        // 1. 创建群组成员适配器
-        memberAdapter = new GroupMemberAdapter(context, callingVM.getResourcePool(), callingVM.callViewModel);
-        
-        // 2. 创建标准网格布局管理器（1x1开始，动态调整）
-        gridLayoutManager = new GridLayoutManager(context, 1);
-        
-        // 3. 应用到RecyclerView
-        groupView.viewRenderers.setLayoutManager(gridLayoutManager);
-        groupView.viewRenderers.setAdapter(memberAdapter);
-        
-        // 4. 设置RecyclerView引用用于视频绑定刷新
-        memberAdapter.setRecyclerView(groupView.viewRenderers);
-        
-        GroupCallLogger.logCriticalFlow("九宫格架构", "初始化完成", "GridLayoutManager + GroupMemberAdapter");
+        try {
+            // 1. 创建群组成员适配器
+            android.util.Log.e("GroupCallFlow", "🔧 [initUnifiedGridLayout] 创建GroupMemberAdapter");
+            memberAdapter = new GroupMemberAdapter(context, callingVM.getResourcePool(), callingVM.callViewModel);
+            android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] GroupMemberAdapter创建成功: " + (memberAdapter != null));
+            
+            // 2. 创建标准网格布局管理器（1x1开始，动态调整）
+            android.util.Log.e("GroupCallFlow", "🔧 [initUnifiedGridLayout] 创建GridLayoutManager");
+            gridLayoutManager = new GridLayoutManager(context, 1);
+            android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] GridLayoutManager创建成功");
+            
+            // 3. 应用到RecyclerView
+            android.util.Log.e("GroupCallFlow", "🔧 [initUnifiedGridLayout] 设置LayoutManager和Adapter");
+            groupView.viewRenderers.setLayoutManager(gridLayoutManager);
+            android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] LayoutManager设置成功");
+            
+            groupView.viewRenderers.setAdapter(memberAdapter);
+            android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] Adapter设置成功");
+            
+            // 4. 设置RecyclerView引用用于视频绑定刷新
+            android.util.Log.e("GroupCallFlow", "🔧 [initUnifiedGridLayout] 设置RecyclerView引用");
+            memberAdapter.setRecyclerView(groupView.viewRenderers);
+            android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] RecyclerView引用设置成功");
+            
+            android.util.Log.e("GroupCallFlow", "✅✅✅ [initUnifiedGridLayout] 统一九宫格布局初始化完成!!!");
+            GroupCallLogger.logCriticalFlow("九宫格架构", "初始化完成", "GridLayoutManager + GroupMemberAdapter");
+            
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] initUnifiedGridLayout异常: " + e.getMessage(), e);
+            throw e;
+        }
     }
     
     @Override
@@ -125,6 +146,16 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
                 android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] viewRenderers是否为null: " + (groupView.viewRenderers == null));
             }
             
+            // 🔧 关键修复：初始化九宫格适配器
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备初始化九宫格布局");
+            initUnifiedGridLayout();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 九宫格布局初始化完成");
+            
+            // 🔧 添加测试数据确保九宫格可见
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备添加测试数据到九宫格");
+            addTestDataToGrid();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 测试数据添加完成");
+            
             // 配置视频相关控件
             android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备执行setupVideoControls");
             setupVideoControls();
@@ -146,6 +177,59 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
         }
         
         GroupCallLogger.logCriticalFlow("数据绑定", "完成", "群组通话数据绑定成功");
+    }
+    
+    /**
+     * 添加测试数据到九宫格以验证显示
+     */
+    private void addTestDataToGrid() {
+        if (memberAdapter == null) {
+            android.util.Log.e("GroupCallFlow", "❌ [addTestDataToGrid] memberAdapter为null!");
+            return;
+        }
+        
+        try {
+            // 创建测试成员数据
+            java.util.List<Object> testMembers = new java.util.ArrayList<>();
+            
+            // 添加自己作为第一个成员
+            Object selfMember = createTestMember("我", true);
+            if (selfMember != null) {
+                testMembers.add(selfMember);
+                android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] 添加自己成员");
+            }
+            
+            // 添加其他成员
+            Object otherMember = createTestMember("群友", false);
+            if (otherMember != null) {
+                testMembers.add(otherMember);
+                android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] 添加其他成员");
+            }
+            
+            android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] 测试数据创建完成，数量: " + testMembers.size());
+            
+            // 通知适配器数据更新
+            memberAdapter.notifyDataSetChanged();
+            android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] notifyDataSetChanged已调用");
+            
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] addTestDataToGrid异常: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * 创建测试成员数据
+     */
+    private Object createTestMember(String name, boolean isSelf) {
+        try {
+            // 这里需要根据实际的Member类来创建对象
+            // 先返回null，让我们看看日志输出
+            android.util.Log.e("GroupCallFlow", "🔍 [createTestMember] 创建测试成员: " + name + ", isSelf: " + isSelf);
+            return null; // 暂时返回null
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] createTestMember异常: " + e.getMessage(), e);
+            return null;
+        }
     }
     
     /**
