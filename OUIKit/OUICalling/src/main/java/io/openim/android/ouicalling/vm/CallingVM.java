@@ -142,6 +142,10 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      * @param signalingInfo 信令信息
      */
     public void updateSignalingInfo(SignalingInfo signalingInfo) {
+        // ✅ 修复挂断失效问题：设置当前信令信息
+        this.currentSignalingInfo = signalingInfo;
+        L.e("CallingVM", "✅ 设置currentSignalingInfo成功: " + (signalingInfo != null ? "非空" : "空"));
+        
         stateManager.updateSignalingInfo(signalingInfo);
         android.util.Log.d(TAG, "信令状态已更新: " + stateManager.getDebugInfo());
         
@@ -573,11 +577,20 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     }
 
     public void signalingHungUp(SignalingInfo signalingInfo) {
+        L.e("CallingVM", "========== signalingHungUp执行 ==========");
+        L.e("CallingVM", "isStartCall: " + isStartCall);
+        L.e("CallingVM", "signalingInfo是否为空: " + (signalingInfo == null));
+        L.e("CallingVM", "18秒后将自动关闭UI");
+        
         Common.UIHandler.postDelayed(this::dismissUI, 18 * 1000);
+        
         if (!isStartCall) {
+            L.e("CallingVM", "通话未开始，执行signalingCancel");
             signalingCancel(signalingInfo);
             return;
         }
+        
+        L.e("CallingVM", "通话已开始，发送挂断信令");
         sendSignaling(Constants.MsgType.callingHungup, signalingInfo, callBackDismissUI);
     }
 
@@ -1752,19 +1765,31 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      */
     public void hangup() {
         try {
-            L.d("CallingVM", "挂断通话");
+            L.e("CallingVM", "========== 开始挂断通话 ==========");
+            L.e("CallingVM", "currentSignalingInfo是否为空: " + (currentSignalingInfo == null));
+            L.e("CallingVM", "isStartCall状态: " + isStartCall);
+            L.e("CallingVM", "isCallOut状态: " + isCallOut);
+            L.e("CallingVM", "dismissListener是否为空: " + (dismissListener == null));
             
             // ✅ 使用缓存的当前信令信息
             if (currentSignalingInfo == null) {
-                L.e("CallingVM", "当前信令信息为空，挂断通话失败");
+                L.e("CallingVM", "❌ 致命错误：当前信令信息为空，挂断通话失败");
+                L.e("CallingVM", "尝试强制关闭UI...");
+                dismissUI();
                 return;
             }
+            
+            L.e("CallingVM", "信令信息有效，继续挂断流程");
+            L.e("CallingVM", "房间ID: " + (currentSignalingInfo.getInvitation() != null ? currentSignalingInfo.getInvitation().getRoomID() : "null"));
             
             // ✅ 直接调用带参数的hangup方法
             hangup(currentSignalingInfo);
             
         } catch (Exception e) {
+            L.e("CallingVM", "挂断通话发生异常: " + e.getMessage(), e);
             LogExceptionHandler.handleException("CallingVM", "挂断通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+            // 异常时强制关闭UI
+            dismissUI();
         }
     }
     

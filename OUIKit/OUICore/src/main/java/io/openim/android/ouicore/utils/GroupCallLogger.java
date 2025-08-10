@@ -20,17 +20,17 @@ import androidx.annotation.Nullable;
  * - 错误处理：GroupCallLogger.logError("视频渲染失败", exception)
  * 
  * adb过滤命令：
- * - 所有群组通话日志：adb logcat | grep "GC_"
- * - 关键流程：adb logcat | grep "GC_CRITICAL"  
- * - 信令相关：adb logcat | grep "GC_SIGNALING"
- * - 状态变化：adb logcat | grep "GC_STATE"
- * - 性能问题：adb logcat | grep "GC_PERF"
- * - 错误日志：adb logcat | grep "GC_ERROR"
+ * - 所有群组通话日志：adb logcat | grep "OpenIM_"
+ * - 关键流程：adb logcat | grep "OpenIM_CRITICAL"  
+ * - 信令相关：adb logcat | grep "OpenIM_SIGNALING"
+ * - 状态变化：adb logcat | grep "OpenIM_STATE"
+ * - 性能问题：adb logcat | grep "OpenIM_PERF"
+ * - 错误日志：adb logcat | grep "OpenIM_ERROR"
  */
 public class GroupCallLogger {
     
     // 群组通话专用标签前缀
-    private static final String TAG_PREFIX = "GC_";  // Group Call
+    private static final String TAG_PREFIX = "OpenIM_";  // OpenIM Group Call
     
     // 专用标签分类（便于adb过滤）
     public static final String TAG_CRITICAL = TAG_PREFIX + "CRITICAL";     // 关键流程 
