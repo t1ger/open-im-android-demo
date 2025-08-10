@@ -198,6 +198,7 @@ public class CallingServiceImp implements CallingService {
             // 🔧 关键修复：先验证信令类型，避免被意外修改
             String originalCallType = CallDialogFactory.getCallTypeDescription(signalingInfo);
             L.critical(TAG, "✅ 原始信令类型: " + originalCallType);
+            android.util.Log.d("GroupCallFlow", "🔍 [buildCallDialog] 原始信令类型: " + originalCallType);
             
             // 调试输出：检查SessionType
             if (signalingInfo.getInvitation() != null) {
@@ -208,6 +209,8 @@ public class CallingServiceImp implements CallingService {
                 L.critical(TAG, "📋 InviteeList大小: " + (signalingInfo.getInvitation().getInviteeUserIDList() != null ? signalingInfo.getInvitation().getInviteeUserIDList().size() : "null"));
                 L.critical(TAG, "🔍 是否相等: " + (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT));
                 L.critical(TAG, "🔍 CallStateManager判断结果: " + CallStateManager.isGroupCall(signalingInfo));
+                
+                android.util.Log.d("GroupCallFlow", "📋 [buildCallDialog] SessionType: " + signalingInfo.getInvitation().getSessionType() + ", GROUP_CHAT: " + ConversationType.GROUP_CHAT + ", 是群组: " + CallStateManager.isGroupCall(signalingInfo));
             }
             
             // ✅ 直接使用CallDialogFactory，跳过可能修改信令的SignalingProcessor
@@ -217,6 +220,7 @@ public class CallingServiceImp implements CallingService {
             // 验证创建的对话框类型是否正确
             String createdDialogType = callDialog.getClass().getSimpleName();
             L.critical(TAG, "创建的对话框类型: " + createdDialogType);
+            android.util.Log.d("GroupCallFlow", "✅ [buildCallDialog] 创建的对话框类型: " + createdDialogType);
             
             // 如果群组信令却创建了单人对话框，记录关键调试信息
             boolean isGroupSignaling = CallStateManager.isGroupCall(signalingInfo);
@@ -226,6 +230,11 @@ public class CallingServiceImp implements CallingService {
                 L.e(TAG, "调试信息 - SessionType: " + signalingInfo.getInvitation().getSessionType());
                 L.e(TAG, "调试信息 - GroupID: " + signalingInfo.getInvitation().getGroupID());
                 L.e(TAG, "调试信息 - InviteeList: " + signalingInfo.getInvitation().getInviteeUserIDList());
+                android.util.Log.e("GroupCallFlow", "❌ [buildCallDialog] 严重错误：群组信令创建了单人对话框！SessionType: " + signalingInfo.getInvitation().getSessionType());
+            } else if (isGroupSignaling && isGroupDialog) {
+                android.util.Log.d("GroupCallFlow", "✅ [buildCallDialog] 群组信令正确创建了GroupCallDialog");
+            } else if (!isGroupSignaling && !isGroupDialog) {
+                android.util.Log.d("GroupCallFlow", "✅ [buildCallDialog] 单人信令正确创建了SingleCallDialog");
             }
             
             L.businessFlow(TAG, "通话对话框创建", 
@@ -271,6 +280,7 @@ public class CallingServiceImp implements CallingService {
     @Override
     public void call(SignalingInfo signalingInfo) {
         L.businessFlow(TAG, "发起通话", "开始处理通话请求");
+        android.util.Log.d("GroupCallFlow", "📥 [CallingService] 接收到通话信令 - 开始处理");
         
         // 检查是否已有通话进行中
         if (isCallingTips()) {
@@ -284,21 +294,27 @@ public class CallingServiceImp implements CallingService {
         // 记录通话类型用于调试
         String callTypeDesc = CallDialogFactory.getCallTypeDescription(signalingInfo);
         L.businessFlow(TAG, "通话类型识别", callTypeDesc);
+        android.util.Log.d("GroupCallFlow", "🔍 [CallingService] 信令类型识别: " + callTypeDesc);
         
         try {
             // 创建对应类型的通话对话框
+            android.util.Log.d("GroupCallFlow", "🔧 [CallingService] 开始创建通话对话框");
             buildCallDialog(getContext(), null, true);
             
             if (callDialog == null) {
                 L.e(TAG, "通话对话框创建失败");
+                android.util.Log.e("GroupCallFlow", "❌ [CallingService] 通话对话框创建失败");
                 return;
             }
+            
+            android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框创建成功: " + callDialog.getClass().getSimpleName());
             
             // 在UI线程显示对话框
             Common.UIHandler.post(() -> {
                 try {
                     callDialog.show();
                     L.businessFlow(TAG, "通话对话框显示", "成功");
+                    android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框显示成功");
                 } catch (Exception e) {
                     LogExceptionHandler.handleException(TAG, "显示通话对话框失败", 
                         LogExceptionHandler.ExceptionType.UI_ERROR, e);

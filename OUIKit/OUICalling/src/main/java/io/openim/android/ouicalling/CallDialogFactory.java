@@ -46,17 +46,21 @@ public class CallDialogFactory {
                 ", SessionType: " + L.safeToString(signalingInfo.getInvitation().getSessionType()) +
                 ", GroupID: " + L.safeToString(signalingInfo.getInvitation().getGroupID()));
             
+            android.util.Log.d("GroupCallFlow", "🏭 [CallDialogFactory] 开始创建对话框 - 类型: " + (isGroupCall ? "群组" : "单人") + ", SessionType: " + signalingInfo.getInvitation().getSessionType());
+            
             BaseCallDialog dialog;
             
             if (isGroupCall) {
                 // 关键修复点2：群组通话直接创建GroupCallDialog，显示九宫格界面
                 dialog = new GroupCallDialog(context, callingService, isCallOut);
                 L.critical("CallDialogFactory", "创建群组通话对话框 - 直接九宫格界面");
+                android.util.Log.d("GroupCallFlow", "✅ [CallDialogFactory] 创建GroupCallDialog - 九宫格界面");
                 
             } else {
                 // 单人通话创建SingleCallDialog
                 dialog = new SingleCallDialog(context, callingService, isCallOut);
                 L.d("CallDialogFactory", "创建单人通话对话框");
+                android.util.Log.d("GroupCallFlow", "✅ [CallDialogFactory] 创建SingleCallDialog - 单人界面");
             }
             
             // 设置关闭监听器
@@ -69,6 +73,8 @@ public class CallDialogFactory {
             
             L.businessFlow("CallDialogFactory", "对话框创建完成", 
                 "类型: " + dialog.getClass().getSimpleName());
+            
+            android.util.Log.d("GroupCallFlow", "✅ [CallDialogFactory] 对话框创建完成: " + dialog.getClass().getSimpleName());
             
             return dialog;
             
