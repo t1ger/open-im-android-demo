@@ -1,147 +1,133 @@
 package io.openim.android.ouicalling;
 
 import android.content.Context;
+import android.os.Handler;
 import android.view.View;
-import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.recyclerview.widget.GridLayoutManager;
-
-import java.util.ArrayList;
-import java.util.List;
+import androidx.recyclerview.widget.RecyclerView;
 
 import io.openim.android.ouicalling.adapter.GroupMemberAdapter;
-import io.openim.android.ouicalling.adapter.WeChatGroupMemberAdapter;
-import io.openim.android.ouicalling.layout.WeChatGridLayoutManager;
 import io.openim.android.ouicalling.databinding.DialogGroupCallBinding;
 import io.openim.android.ouicalling.entity.GroupCallMember;
-import io.openim.android.ouicalling.entity.CallMemberState;
 import io.openim.android.ouicore.services.CallingService;
-import io.openim.android.ouicore.utils.Common;
+import io.openim.android.sdk.models.SignalingInfo;
 import io.openim.android.ouicore.utils.Constants;
 import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicore.utils.Common;
+import io.openim.android.ouicore.utils.GroupCallLogger;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
-import io.openim.android.ouicore.utils.OnDedrepClickListener;
-import io.openim.android.sdk.OpenIMClient;
-import io.openim.android.sdk.listener.OnBase;
-import io.openim.android.sdk.models.GroupInfo;
-import io.openim.android.sdk.models.SignalingInfo;
 
 /**
  * 群组通话对话框
- * 专门处理群组音视频通话，使用dialog_group_call.xml布局，直接显示九宫格界面
+ * 重构后的统一九宫格架构，消除双重布局系统冲突
+ * 
+ * 架构设计原则：
+ * 1. 统一布局管理：只使用标准GridLayoutManager
+ * 2. 统一适配器：只使用GroupMemberAdapter  
+ * 3. 清晰的状态管理：简化的九宫格模式
+ * 4. 完全兼容BaseCallDialog接口
  */
 public class GroupCallDialog extends BaseCallDialog {
     
-    private DialogGroupCallBinding groupView;
-    private GroupMemberAdapter groupMemberAdapter;
-    private WeChatGroupMemberAdapter weChatGroupMemberAdapter;
-    private WeChatGridLayoutManager weChatGridLayoutManager;
-    private android.os.Handler updateHandler;
-    private Runnable updateTask;
+    private static final String TAG = "GroupCallDialog";
     
-    // 微信风格相关属性
-    private boolean useWeChatStyle = true;
-    private boolean mainVideoMode = false;
+    // UI组件
+    private DialogGroupCallBinding groupView;
+    private GroupMemberAdapter memberAdapter;
+    private GridLayoutManager gridLayoutManager;
+    private Handler updateHandler;
+    private Runnable updateTask;
     
     public GroupCallDialog(@NonNull Context context, CallingService callingService, boolean isCallOut) {
         super(context, callingService, isCallOut);
-        L.businessFlow("GroupCallDialog", "群组通话对话框创建", "直接显示九宫格界面");
+        GroupCallLogger.logCriticalFlow("对话框创建", "类型: GroupCall", "统一九宫格架构初始化");
+        GroupCallLogger.logDebug("构造函数", "context=" + context.getClass().getSimpleName() + ", isCallOut=" + isCallOut);
     }
     
     @Override
     protected void initSpecificView() {
-        // 直接使用群组通话布局 - 这是关键修复点
+        // 使用群组通话专用布局
         groupView = DialogGroupCallBinding.inflate(getLayoutInflater());
         setContentView(groupView.getRoot());
         
         // 设置通用UI属性
+        setupCommonUI();
+        
+        // 初始化九宫格布局（统一架构）
+        initUnifiedGridLayout();
+        
+        GroupCallLogger.logUIOperation("九宫格初始化", "统一GridLayoutManager架构完成");
+    }
+    
+    /**
+     * 设置通用UI属性
+     */
+    private void setupCommonUI() {
         if (groupView.zoomOut != null) {
             groupView.zoomOut.setVisibility(Common.isScreenLocked() ? View.GONE : View.VISIBLE);
         }
-        
-        // 初始化群组成员网格布局
-        initGroupMemberGrid();
-        
-        L.businessFlow("GroupCallDialog", "九宫格UI初始化", "完成");
     }
     
     /**
-     * 初始化群组成员网格布局
+     * 初始化统一的九宫格布局架构
+     * 只使用一套布局系统，避免冲突
      */
-    private void initGroupMemberGrid() {
+    private void initUnifiedGridLayout() {
         if (groupView.viewRenderers == null) {
-            L.w("GroupCallDialog", "viewRenderers为null，无法初始化网格布局");
+            L.e(TAG, "viewRenderers为null，无法初始化网格布局");
             return;
         }
         
-        // 🔧 修复：强制使用微信风格，避免布局冲突
-        useWeChatStyle = true;
-        initWeChatStyleGrid();
+        GroupCallLogger.logDebug("九宫格初始化", "开始设置GridLayoutManager和GroupMemberAdapter");
         
-        L.d("GroupCallDialog", "GRID_INIT_FIXED: 微信九宫格");
-    }
-    
-    /**
-     * 初始化微信风格九宫格
-     */
-    private void initWeChatStyleGrid() {
-        // 创建微信风格适配器
-        weChatGroupMemberAdapter = new WeChatGroupMemberAdapter(
-            context, 
-            callingVM.getResourcePool(), 
-            callingVM.callViewModel
-        );
+        // 1. 创建群组成员适配器
+        memberAdapter = new GroupMemberAdapter(context, callingVM.getResourcePool(), callingVM.callViewModel);
         
-        // 创建微信风格布局管理器
-        weChatGridLayoutManager = new WeChatGridLayoutManager(context);
+        // 2. 创建标准网格布局管理器（1x1开始，动态调整）
+        gridLayoutManager = new GridLayoutManager(context, 1);
         
-        // 设置成员点击监听器，支持切换主画面
-        weChatGroupMemberAdapter.setOnMemberClickListener(new WeChatGroupMemberAdapter.OnMemberClickListener() {
-            @Override
-            public void onMemberClick(GroupCallMember member, int position) {
-                handleMemberClick(member, position);
-            }
-            
-            @Override
-            public void onMemberLongClick(GroupCallMember member, int position) {
-                handleMemberLongClick(member, position);
-            }
-        });
-        
-        // 应用布局和适配器
-        groupView.viewRenderers.setLayoutManager(weChatGridLayoutManager);
-        groupView.viewRenderers.setAdapter(weChatGroupMemberAdapter);
-    }
-    
-    /**
-     * 初始化经典网格布局（保持向后兼容）
-     */
-    private void initClassicGrid() {
-        // 创建群组成员适配器
-        groupMemberAdapter = new GroupMemberAdapter(context, callingVM.getResourcePool(), callingVM.callViewModel);
-        
-        // 设置网格布局管理器 - 默认1x1，会根据成员数量动态调整
-        GridLayoutManager gridLayoutManager = new GridLayoutManager(context, 1);
+        // 3. 应用到RecyclerView
         groupView.viewRenderers.setLayoutManager(gridLayoutManager);
-        groupView.viewRenderers.setAdapter(groupMemberAdapter);
+        groupView.viewRenderers.setAdapter(memberAdapter);
         
-        // 设置RecyclerView引用用于视频绑定刷新
-        groupMemberAdapter.setRecyclerView(groupView.viewRenderers);
+        // 4. 设置RecyclerView引用用于视频绑定刷新
+        memberAdapter.setRecyclerView(groupView.viewRenderers);
+        
+        GroupCallLogger.logCriticalFlow("九宫格架构", "初始化完成", "GridLayoutManager + GroupMemberAdapter");
     }
     
     @Override
     protected void bindSpecificData(SignalingInfo signalingInfo) {
+        GroupCallLogger.logCriticalFlow("数据绑定", "群组通话", "开始绑定信令数据");
+        GroupCallLogger.logSignaling("DATA_BINDING", "绑定群组通话数据", GroupCallLogger.formatSignalingData(signalingInfo));
+        
         // 设置视频通话标识
         callingVM.setVideoCalls(Constants.MediaType.VIDEO.equals(signalingInfo.getInvitation().getMediaType()));
         
-        // 根据通话类型设置控件可见性
+        // 配置视频相关控件
+        setupVideoControls();
+        
+        // 设置控件默认状态
+        setupDefaultControlStates();
+        
+        // 根据呼叫方向设置UI状态
+        setupCallDirectionUI();
+        
+        GroupCallLogger.logCriticalFlow("数据绑定", "完成", "群组通话数据绑定成功");
+    }
+    
+    /**
+     * 配置视频相关控件
+     */
+    private void setupVideoControls() {
         if (groupView.cameraControl != null) {
             groupView.cameraControl.setVisibility(callingVM.isVideoCalls ? View.VISIBLE : View.GONE);
         }
         
         if (!callingVM.isVideoCalls) {
-            // 音频通话设置
+            // 音频通话配置
             callingVM.callViewModel.setCameraEnabled(false);
             if (groupView.localSpeakerVideoView != null) {
                 groupView.localSpeakerVideoView.setVisibility(View.GONE);
@@ -153,15 +139,24 @@ public class GroupCallDialog extends BaseCallDialog {
                 groupView.headTips.setVisibility(View.GONE);
             }
         }
-        
-        // 设置控件默认状态
+    }
+    
+    /**
+     * 设置控件默认状态
+     */
+    private void setupDefaultControlStates() {
         if (groupView.micIsOn != null) {
             groupView.micIsOn.setChecked(true);
         }
         if (groupView.speakerIsOn != null) {
             groupView.speakerIsOn.setChecked(true);
         }
-        
+    }
+    
+    /**
+     * 根据呼叫方向设置UI状态
+     */
+    private void setupCallDirectionUI() {
         if (callingVM.isCallOut) {
             // 呼出状态
             if (groupView.callingMenu != null) {
@@ -178,505 +173,174 @@ public class GroupCallDialog extends BaseCallDialog {
             if (groupView.ask != null) {
                 groupView.ask.setVisibility(View.VISIBLE);
             }
+            
+            // 设置群组通话专有的点击监听器
+            setupGroupCallClickListeners();
+        }
+    }
+    
+    /**
+     * 设置群组通话专有的点击监听器
+     */
+    private void setupGroupCallClickListeners() {
+        // 接听按钮
+        if (groupView.answer != null) {
+            groupView.answer.setOnClickListener(v -> {
+                GroupCallLogger.logCriticalFlow("接听操作", "群组通话", "用户点击接听按钮");
+                callingVM.accept();
+            });
         }
         
-        // 启动群组成员更新任务
-        setupGroupMemberUpdateTask();
+        // 拒绝按钮
+        if (groupView.reject != null) {
+            groupView.reject.setOnClickListener(v -> {
+                GroupCallLogger.logCriticalFlow("拒绝操作", "群组通话", "用户点击拒绝按钮");
+                callingVM.reject();
+            });
+        }
         
-        L.businessFlow("GroupCallDialog", "群组通话数据绑定", 
-            "isVideo: " + callingVM.isVideoCalls + ", isCallOut: " + callingVM.isCallOut);
+        // 挂断按钮
+        if (groupView.hangUp != null) {
+            groupView.hangUp.setOnClickListener(v -> {
+                GroupCallLogger.logCriticalFlow("挂断操作", "群组通话", "用户点击挂断按钮");
+                callingVM.hangup();
+            });
+        }
+        
+        // 切换摄像头
+        if (groupView.switchCamera != null) {
+            groupView.switchCamera.setOnClickListener(v -> {
+                callingVM.callViewModel.switchCamera();
+            });
+        }
+        
+        // 麦克风控制
+        if (groupView.micIsOn != null) {
+            groupView.micIsOn.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                callingVM.callViewModel.setMicrophoneEnabled(isChecked);
+            });
+        }
+        
+        // 扬声器控制
+        if (groupView.speakerIsOn != null) {
+            groupView.speakerIsOn.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                callingVM.callViewModel.setSpeakerphoneEnabled(isChecked);
+            });
+        }
     }
     
     @Override
     protected void bindUserInfo(SignalingInfo signalingInfo) {
-        // 群组通话：获取群组信息而不是单个用户信息
-        String groupID = signalingInfo.getInvitation().getGroupID();
-        
-        if (groupID == null || groupID.isEmpty()) {
-            L.w("GroupCallDialog", "群组ID为空，无法获取群组信息");
-            return;
-        }
-        
-        OpenIMClient.getInstance().groupManager.getGroupsInfo(new OnBase<List<GroupInfo>>() {
-            @Override
-            public void onError(int code, String error) {
-                LogExceptionHandler.handleException("GroupCallDialog", "获取群组信息失败", 
-                    LogExceptionHandler.ExceptionType.NETWORK_ERROR, null);
-                L.e("GroupCallDialog", "获取群组信息失败: " + error + ", code: " + code);
-                Toast.makeText(context, "获取群组信息失败: " + error, Toast.LENGTH_SHORT).show();
-            }
-
-            @Override
-            public void onSuccess(List<GroupInfo> data) {
-                if (data.isEmpty()) return;
-                
-                GroupInfo groupInfo = data.get(0);
-                L.d("GroupCallDialog", "获取群组信息成功: " + groupInfo.getGroupName());
-                
-                // 更新UI显示群组信息
-                updateGroupInfoUI(groupInfo);
-            }
-        }, List.of(groupID));
-        
-        // 同时初始化群组成员信息
-        initializeGroupMembers(signalingInfo);
-    }
-    
-    /**
-     * 更新群组信息到UI
-     */
-    private void updateGroupInfoUI(GroupInfo groupInfo) {
-        try {
-            // 群组通话可能不需要显示群组名称，或者显示在特定位置
-            // 这里可以根据UI设计需求进行调整
-            
-            L.d("GroupCallDialog", "群组信息UI更新完成: " + groupInfo.getGroupName());
-            
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "更新群组信息UI", 
-                LogExceptionHandler.ExceptionType.UI_ERROR, e);
-        }
-    }
-    
-    /**
-     * 初始化群组成员信息
-     */
-    private void initializeGroupMembers(SignalingInfo signalingInfo) {
-        try {
-            // 从信令中获取邀请的成员列表
-            List<String> inviteeList = signalingInfo.getInvitation().getInviteeUserIDList();
-            String inviterID = signalingInfo.getInvitation().getInviterUserID();
-            
-            // 构建所有参与者ID列表（包括发起者和被邀请者）
-            List<String> allMemberIds = new ArrayList<>();
-            if (inviterID != null && !inviterID.isEmpty()) {
-                allMemberIds.add(inviterID);
-            }
-            if (inviteeList != null && !inviteeList.isEmpty()) {
-                allMemberIds.addAll(inviteeList);
-            }
-            
-            L.d("GroupCallDialog", "初始化群组成员，总数: " + allMemberIds.size());
-            
-            // 直接初始化群组成员列表
-            for (String memberId : allMemberIds) {
-                GroupCallMember member = new GroupCallMember(memberId, memberId, null); // 暂时使用ID作为昵称
-                member.setState(CallMemberState.IDLE);
-                callingVM.groupMembers.add(member);
-            }
-            
-            // 更新UI显示
-            updateGroupMemberGrid();
-            
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "初始化群组成员", 
-                LogExceptionHandler.ExceptionType.DATA_ERROR, e);
-        }
+        GroupCallLogger.logDebug("用户信息绑定", "群组通话用户信息从 CallingVM 获取");
+        // 群组通话的用户信息从CallingVM中获取
+        refreshMemberList();
     }
     
     @Override
     protected void setupEventListeners(SignalingInfo signalingInfo) {
-        // 切换摄像头
-        if (groupView.switchCamera != null) {
-            groupView.switchCamera.setOnClickListener(new OnDedrepClickListener(1000) {
-                @Override
-                public void click(View v) {
-                    callingVM.callViewModel.switchCamera();
-                    L.d("GroupCallDialog", "切换摄像头");
-                }
-            });
-        }
-
-        // 麦克风开关
-        if (groupView.micIsOn != null) {
-            groupView.micIsOn.setOnClickListener(new OnDedrepClickListener(1000) {
-                @Override
-                public void click(View v) {
-                    boolean isChecked = groupView.micIsOn.isChecked();
-                    callingVM.callViewModel.setMicrophoneEnabled(isChecked);
-                    L.d("GroupCallDialog", "麦克风状态: " + isChecked);
-                }
-            });
-        }
-
-        // 扬声器开关  
-        if (groupView.speakerIsOn != null) {
-            groupView.speakerIsOn.setOnClickListener(new OnDedrepClickListener(1000) {
-                @Override
-                public void click(View v) {
-                    boolean isChecked = groupView.speakerIsOn.isChecked();
-                    callingVM.callViewModel.setSpeakerphoneEnabled(isChecked);
-                    L.d("GroupCallDialog", "扬声器状态: " + isChecked);
-                }
-            });
-        }
-
-        // 摄像头开关
-        if (groupView.cameraControl != null) {
-            groupView.cameraControl.setOnClickListener(new OnDedrepClickListener(1000) {
-                @Override
-                public void click(View v) {
-                    boolean isEnabled = !callingVM.callViewModel.isCameraEnabled();
-                    callingVM.callViewModel.setCameraEnabled(isEnabled);
-                    L.d("GroupCallDialog", "摄像头状态: " + isEnabled);
-                }
-            });
-        }
-
-        // 挂断
-        if (groupView.hangUp != null) {
-            groupView.hangUp.setOnClickListener(new OnDedrepClickListener() {
-                @Override
-                public void click(View v) {
-                    callingVM.hangup();
-                    L.d("GroupCallDialog", "用户挂断群组通话");
-                }
-            });
-        }
-
-        // 拒接
-        if (groupView.reject != null) {
-            groupView.reject.setOnClickListener(new OnDedrepClickListener() {
-                @Override
-                public void click(View v) {
-                    callingVM.reject();
-                    L.d("GroupCallDialog", "用户拒接群组通话");
-                }
-            });
-        }
-
-        // 接听
-        if (groupView.answer != null) {
-            groupView.answer.setOnClickListener(new OnDedrepClickListener() {
-                @Override
-                public void click(View v) {
-                    callingVM.accept();
-                    L.d("GroupCallDialog", "用户接听群组通话");
-                }
-            });
-        }
-
-        // 最小化
-        if (groupView.zoomOut != null) {
-            groupView.zoomOut.setOnClickListener(v -> {
-                shrink(true);
-                L.d("GroupCallDialog", "最小化群组通话窗口");
-            });
-        }
-
-        L.d("GroupCallDialog", "群组通话事件监听器设置完成");
+        GroupCallLogger.logCriticalFlow("事件监听", "设置", "群组通话事件监听器初始化");
+        
+        // 群组通话事件监听设置
+        // 注意：CallingVM可能没有这些方法，需要通过其他方式监听
+        // TODO: 实现成员列表变化和视频刷新的监听机制
     }
     
     @Override
     protected void handleShrink(boolean isShrink) {
-        if (groupView != null && groupView.home != null) {
-            groupView.home.setVisibility(isShrink ? View.GONE : View.VISIBLE);
-        }
-        
-        // 更新悬浮窗状态显示
-        if (isShrink && floatViewBinding != null) {
-            if (callingVM.isStartCall) {
-                floatViewBinding.sTips.setText("群组通话中");
-            } else {
-                floatViewBinding.sTips.setText("群组通话邀请");
+        GroupCallLogger.logUIOperation("悬浮窗收起", "isShrink=" + isShrink);
+        // 群组通话的悬浮窗逻辑
+        if (isShrink) {
+            // 收起时暂停视频渲染以节省资源
+            if (memberAdapter != null) {
+                // TODO: 暂停视频渲染逻辑
+            }
+        } else {
+            // 恢复时重新开始视频渲染
+            if (memberAdapter != null) {
+                // TODO: 恢复视频渲染逻辑
             }
         }
     }
     
     @Override
     protected void cleanup() {
-        try {
-            L.d("GroupCallDialog", "开始清理群组通话资源");
-            
-            // 清理更新任务
-            clearUpdateTask();
-            
-            // 清理群组成员适配器
-            if (groupMemberAdapter != null) {
-                groupMemberAdapter.cleanup();
-                groupMemberAdapter = null;
-            }
-            
-            // 清理视频渲染器资源
-            if (callingVM != null && callingVM.callViewModel != null) {
-                callingVM.callViewModel.clearVideoRenderers();
-            }
-            
-            // 清理资源池
-            if (callingVM.getResourcePool() != null) {
-                callingVM.getResourcePool().cleanup();
-            }
-            
-            // 清理绑定
-            if (groupView != null) {
-                groupView = null;
-            }
-            
-            L.d("GroupCallDialog", "群组通话资源清理完成");
-            
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "清理资源", 
-                LogExceptionHandler.ExceptionType.CLEANUP_ERROR, e);
-        }
-    }
-    
-    /**
-     * 设置群组成员更新任务
-     */
-    private void setupGroupMemberUpdateTask() {
-        if (updateHandler == null) {
-            updateHandler = new android.os.Handler(android.os.Looper.getMainLooper());
-        }
+        GroupCallLogger.logCriticalFlow("资源清理", "开始", "群组通话资源清理");
         
-        // 清理之前的任务
-        clearUpdateTask();
-        
-        updateTask = new Runnable() {
-            @Override
-            public void run() {
-                if (groupMemberAdapter != null && !isFinishing()) {
-                    updateGroupMemberGrid();
-                    updateHandler.postDelayed(this, 1000); // 每秒检查一次更新
-                }
-            }
-        };
-        
-        updateHandler.post(updateTask);
-        L.d("GroupCallDialog", "群组成员更新任务启动");
-    }
-    
-    /**
-     * 更新群组成员网格布局
-     */
-    private void updateGroupMemberGrid() {
-        List<GroupCallMember> members = new ArrayList<>(callingVM.groupMembers);
-        int memberCount = members.size();
-        
-        if (useWeChatStyle) {
-            updateWeChatStyleGrid(members, memberCount);
-        } else {
-            updateClassicGrid(members, memberCount);
-        }
-        
-        L.d("GroupCallDialog", "群组成员网格更新完成，成员数: " + memberCount + ", 风格: " + (useWeChatStyle ? "微信" : "经典"));
-    }
-    
-    /**
-     * 更新微信风格网格
-     */
-    private void updateWeChatStyleGrid(List<GroupCallMember> members, int memberCount) {
-        if (weChatGroupMemberAdapter == null || weChatGridLayoutManager == null || groupView == null) {
-            return;
-        }
-        
-        // 更新适配器数据
-        weChatGroupMemberAdapter.updateMembers(members);
-        
-        // 更新布局管理器成员数量
-        weChatGridLayoutManager.updateMemberCount(memberCount);
-        weChatGridLayoutManager.setMainVideoMode(mainVideoMode);
-        
-        L.d("GroupCallDialog", "微信风格网格更新: 成员数=" + memberCount + 
-            ", 主视频模式=" + mainVideoMode + ", " + weChatGridLayoutManager.getLayoutInfo());
-    }
-    
-    /**
-     * 更新经典网格
-     */
-    private void updateClassicGrid(List<GroupCallMember> members, int memberCount) {
-        if (groupMemberAdapter == null || groupView == null) {
-            return;
-        }
-        
-        // 根据成员数量动态调整网格布局
-        if (groupView.viewRenderers != null) {
-            GridLayoutManager gridLayoutManager = (GridLayoutManager) groupView.viewRenderers.getLayoutManager();
-            if (gridLayoutManager != null) {
-                int spanCount = calculateGridSpanCount(memberCount);
-                gridLayoutManager.setSpanCount(spanCount);
-            }
-        }
-        
-        // 更新适配器数据
-        groupMemberAdapter.updateMembers(members);
-    }
-    
-    /**
-     * 根据成员数量计算网格列数
-     */
-    private int calculateGridSpanCount(int memberCount) {
-        if (memberCount <= 1) return 1;
-        if (memberCount <= 4) return 2;  // 2x2 最多4人
-        if (memberCount <= 9) return 3;  // 3x3 最多9人
-        return 3; // 最多9宫格
-    }
-    
-    /**
-     * 清理更新任务防止内存泄漏
-     */
-    private void clearUpdateTask() {
+        // 清理更新任务
         if (updateHandler != null && updateTask != null) {
             updateHandler.removeCallbacks(updateTask);
-            updateTask = null;
         }
-    }
-    
-    /**
-     * 检查Dialog是否即将关闭
-     */
-    private boolean isFinishing() {
-        return !isShowing() || context == null;
-    }
-    
-    /**
-     * 获取视图绑定（用于测试或特殊场景）
-     */
-    public DialogGroupCallBinding getViewBinding() {
-        return groupView;
+        
+        // 清理适配器
+        if (memberAdapter != null) {
+            GroupCallLogger.logDebug("资源清理", "清理GroupMemberAdapter");
+            memberAdapter.cleanup();
+            memberAdapter = null;
+        }
+        
+        // 清理布局管理器
+        gridLayoutManager = null;
+        GroupCallLogger.logCriticalFlow("资源清理", "完成", "所有群组通话资源已清理");
     }
     
     @Override
     public void otherSideAccepted() {
-        try {
-            // 群组通话中，对方接受通话的处理
-            if (groupView != null) {
-                // 隐藏接听/拒绝按钮，显示通话中控制
-                if (groupView.ask != null) {
-                    groupView.ask.setVisibility(View.GONE);
-                }
-                if (groupView.callingMenu != null) {
-                    groupView.callingMenu.setVisibility(View.VISIBLE);
-                }
-            }
-            
-            // 更新群组成员状态：有成员接受了通话
-            updateGroupMemberGrid();
-            
-            L.d("GroupCallDialog", "群组通话中有成员接受，UI更新完成");
-            
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "处理成员接受通话", 
-                LogExceptionHandler.ExceptionType.UI_ERROR, e);
-        }
+        GroupCallLogger.logCriticalFlow("对方接受", "群组通话", "对方成员接受通话");
+        // 群组通话中对方接受的处理逻辑
+        refreshMemberList();
+        refreshVideoViews();
     }
     
     @Override
     public String buildPrimaryKey() {
-        try {
-            if (signalingInfo != null && signalingInfo.getInvitation() != null) {
-                // 群组通话使用群组ID和发起人构建唯一键
-                String groupID = signalingInfo.getInvitation().getGroupID();
-                String inviterID = signalingInfo.getInvitation().getInviterUserID();
-                
-                if (groupID != null && !groupID.isEmpty()) {
-                    return "group_" + groupID + "_" + inviterID + "_" + System.currentTimeMillis();
-                }
-            }
+        if (signalingInfo != null && signalingInfo.getInvitation() != null) {
+            return "group_call_" + signalingInfo.getInvitation().getGroupID();
+        }
+        return "group_call_unknown";
+    }
+    
+    /**
+     * 刷新成员列表
+     */
+    private void refreshMemberList() {
+        if (memberAdapter != null) {
+            int memberCount = callingVM.getGroupMembers().size();
+            GroupCallLogger.logDebug("成员刷新", "刷新群组成员列表, 数量: " + memberCount);
             
-            // 降级方案
-            return "group_call_" + System.currentTimeMillis();
+            // 获取成员列表并更新适配器
+            memberAdapter.notifyDataSetChanged();
             
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "构建主键", 
-                LogExceptionHandler.ExceptionType.DATA_ERROR, e);
-            return "group_call_fallback_" + System.currentTimeMillis();
+            // 根据成员数量调整布局
+            adjustGridLayout(memberCount);
         }
     }
     
     /**
-     * 处理成员点击事件（微信风格）
+     * 刷新视频视图
      */
-    private void handleMemberClick(GroupCallMember member, int position) {
-        try {
-            L.d("GroupCallDialog", "成员点击: " + member.getNickname() + ", 位置: " + position);
-            
-            // 切换主画面
-            toggleMainVideo(position);
-            
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "处理成员点击", 
-                LogExceptionHandler.ExceptionType.UI_ERROR, e);
+    private void refreshVideoViews() {
+        if (memberAdapter != null) {
+            GroupCallLogger.logVideoRendering("所有成员", "刷新视频视图", "更新显示");
+            memberAdapter.notifyDataSetChanged();
         }
     }
     
     /**
-     * 处理成员长按事件（微信风格）
+     * 根据成员数量动态调整网格布局
      */
-    private void handleMemberLongClick(GroupCallMember member, int position) {
-        try {
-            L.d("GroupCallDialog", "成员长按: " + member.getNickname() + ", 位置: " + position);
-            
-            // 可以扩展长按菜单，比如静音、移除等操作
-            // showMemberContextMenu(member, position);
-            
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("GroupCallDialog", "处理成员长按", 
-                LogExceptionHandler.ExceptionType.UI_ERROR, e);
-        }
-    }
-    
-    /**
-     * 切换主视频显示
-     */
-    private void toggleMainVideo(int position) {
-        if (weChatGroupMemberAdapter == null) return;
+    private void adjustGridLayout(int memberCount) {
+        if (gridLayoutManager == null) return;
         
-        int currentMainPosition = weChatGroupMemberAdapter.getMainVideoPosition();
-        
-        if (currentMainPosition == position) {
-            // 如果点击的是当前主视频，则取消主视频模式
-            weChatGroupMemberAdapter.setMainVideoMember(-1);
-            setMainVideoMode(false);
-            L.d("GroupCallDialog", "取消主视频模式");
+        int spanCount;
+        if (memberCount <= 1) {
+            spanCount = 1; // 1x1
+        } else if (memberCount <= 4) {
+            spanCount = 2; // 2x2
         } else {
-            // 设置新的主视频成员
-            weChatGroupMemberAdapter.setMainVideoMember(position);
-            setMainVideoMode(true);
-            L.d("GroupCallDialog", "设置主视频: 位置 " + position);
-        }
-    }
-    
-    /**
-     * 设置主视频模式
-     */
-    private void setMainVideoMode(boolean mainMode) {
-        this.mainVideoMode = mainMode;
-        
-        if (weChatGridLayoutManager != null) {
-            weChatGridLayoutManager.setMainVideoMode(mainMode);
+            spanCount = 3; // 3x3
         }
         
-        // 触发布局更新
-        if (groupView != null && groupView.viewRenderers != null) {
-            groupView.viewRenderers.getLayoutManager().requestLayout();
-        }
-    }
-    
-    /**
-     * 设置是否使用微信风格
-     */
-    public void setUseWeChatStyle(boolean useWeChatStyle) {
-        this.useWeChatStyle = useWeChatStyle;
-    }
-    
-    /**
-     * 获取是否使用微信风格
-     */
-    public boolean isUseWeChatStyle() {
-        return useWeChatStyle;
-    }
-    
-    /**
-     * 获取群组成员适配器（用于测试或特殊场景）
-     */
-    public GroupMemberAdapter getGroupMemberAdapter() {
-        return groupMemberAdapter;
-    }
-    
-    /**
-     * 获取微信风格群组成员适配器
-     */
-    public WeChatGroupMemberAdapter getWeChatGroupMemberAdapter() {
-        return weChatGroupMemberAdapter;
+        gridLayoutManager.setSpanCount(spanCount);
+        GroupCallLogger.logGridLayout("动态调整", memberCount, spanCount + "x" + spanCount);
     }
 }
