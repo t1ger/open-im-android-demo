@@ -410,6 +410,22 @@ public class GroupCallStateManager {
         return count;
     }
     
+    /**
+     * 通知成员信息已更新（用户名、头像等）
+     */
+    public void notifyMembersInfoUpdated() {
+        try {
+            // 通知所有监听器成员信息已更新
+            for (StateChangeObserver observer : stateObservers) {
+                observer.onMembersInfoUpdated();
+            }
+            
+            android.util.Log.d("GroupCallStateManager", "成员信息已更新，通知UI刷新");
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallStateManager", "通知成员信息更新失败", e);
+        }
+    }
+    
     // === 状态变化观察者接口 ===
     
     public interface StateChangeObserver {
@@ -442,6 +458,11 @@ public class GroupCallStateManager {
          * 通话结束
          */
         void onCallEnded(@NonNull String reason);
+        
+        /**
+         * 成员信息已更新（用户名、头像等）
+         */
+        void onMembersInfoUpdated();
     }
     
     // === 状态变化类型枚举 ===

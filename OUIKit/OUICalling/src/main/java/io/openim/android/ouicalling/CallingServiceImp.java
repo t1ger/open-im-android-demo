@@ -328,11 +328,26 @@ public class CallingServiceImp implements CallingService {
     @Override
     public void onHangup(SignalingInfo s) {
         L.e(TAG, "----onHangup-----");
-        if (null == callDialog || callDialog.getCallingVM().isGroupCall()) return; // ✅ 使用统一状态管理
-        callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(),
-            (realm, callHistory) -> callHistory.setDuration((int)
-                (System.currentTimeMillis() - callHistory.getDate())));
+        
+        // 修复：这是信令系统的挂断回调，不是用户主动挂断
+        // 无论单人还是群组通话，都需要处理对方挂断的信令
+        if (null == callDialog) {
+            L.w(TAG, "onHangup: 通话对话框为空");
+            return;
+        }
+        
+        // 记录通话时长（仅单人通话记录到通话历史）
+        if (!callDialog.getCallingVM().isGroupCall()) {
+            callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(),
+                (realm, callHistory) -> callHistory.setDuration((int)
+                    (System.currentTimeMillis() - callHistory.getDate())));
+        }
+        
+        // 关闭对话框
         dismissDialog();
+        
+        L.businessFlow(TAG, "收到挂断信令", 
+            "通话类型: " + (callDialog.getCallingVM().isGroupCall() ? "群组" : "单人"));
     }
 
     /**

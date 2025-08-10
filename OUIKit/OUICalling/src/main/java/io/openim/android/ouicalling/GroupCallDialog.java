@@ -29,7 +29,7 @@ import io.openim.android.ouicore.utils.LogExceptionHandler;
  * 3. 清晰的状态管理：简化的九宫格模式
  * 4. 完全兼容BaseCallDialog接口
  */
-public class GroupCallDialog extends BaseCallDialog {
+public class GroupCallDialog extends BaseCallDialog implements GroupCallStateManager.StateChangeObserver {
     
     private static final String TAG = "GroupCallDialog";
     
@@ -122,6 +122,19 @@ public class GroupCallDialog extends BaseCallDialog {
      * 配置视频相关控件
      */
     private void setupVideoControls() {
+        // 🔧 关键修复：群组通话永远隐藏headTips，显示九宫格
+        if (groupView.headTips != null) {
+            groupView.headTips.setVisibility(View.GONE);
+            GroupCallLogger.logUIOperation("隐藏单人通话界面", "群组通话不显示headTips");
+        }
+        
+        // 🔧 关键修复：确保九宫格RecyclerView可见
+        if (groupView.viewRenderers != null) {
+            groupView.viewRenderers.setVisibility(View.VISIBLE);
+            GroupCallLogger.logUIOperation("显示九宫格界面", "viewRenderers设为可见");
+        }
+        
+        // 视频/音频通话的摄像头控制
         if (groupView.cameraControl != null) {
             groupView.cameraControl.setVisibility(callingVM.isVideoCalls ? View.VISIBLE : View.GONE);
         }
@@ -135,10 +148,10 @@ public class GroupCallDialog extends BaseCallDialog {
             if (groupView.timeTv != null) {
                 groupView.timeTv.setVisibility(View.GONE);
             }
-            if (groupView.headTips != null) {
-                groupView.headTips.setVisibility(View.GONE);
-            }
         }
+        
+        GroupCallLogger.logCriticalFlow("UI配置", "群组通话界面", 
+            "九宫格: VISIBLE, headTips: GONE, 视频: " + callingVM.isVideoCalls);
     }
     
     /**
@@ -239,6 +252,12 @@ public class GroupCallDialog extends BaseCallDialog {
     @Override
     protected void setupEventListeners(SignalingInfo signalingInfo) {
         GroupCallLogger.logCriticalFlow("事件监听", "设置", "群组通话事件监听器初始化");
+        
+        // 🔧 关键修复：注册StateChangeObserver监听成员信息更新
+        if (callingVM.groupCallStateManager != null) {
+            callingVM.groupCallStateManager.addObserver(this);
+            GroupCallLogger.logCriticalFlow("事件监听", "注册成功", "群组通话状态监听器已注册");
+        }
         
         // 群组通话事件监听设置
         // 注意：CallingVM可能没有这些方法，需要通过其他方式监听
@@ -342,5 +361,54 @@ public class GroupCallDialog extends BaseCallDialog {
         
         gridLayoutManager.setSpanCount(spanCount);
         GroupCallLogger.logGridLayout("动态调整", memberCount, spanCount + "x" + spanCount);
+    }
+    
+    // === 实现 StateChangeObserver 接口 ===
+    
+    @Override
+    public void onStateChanged(@NonNull GroupCallStateManager.StateChangeType changeType) {
+        GroupCallLogger.logDebug("状态变化", changeType.getDescription());
+    }
+    
+    @Override
+    public void onMemberStateChanged(@NonNull GroupCallMember member) {
+        GroupCallLogger.logMemberStateChange(member.getUserID(), 
+            member.getState().name(), member.getNickname());
+        refreshMemberList();
+    }
+    
+    @Override
+    public void onMemberAdded(@NonNull GroupCallMember member) {
+        GroupCallLogger.logMemberJoin(member.getUserID(), 
+            callingVM.getGroupMembers().size());
+        refreshMemberList();
+    }
+    
+    @Override
+    public void onMemberRemoved(@NonNull GroupCallMember member) {
+        GroupCallLogger.logMemberLeave(member.getUserID(), "退出通话", 
+            callingVM.getGroupMembers().size());
+        refreshMemberList();
+    }
+    
+    @Override
+    public void onCurrentSpeakerChanged(String oldSpeaker, String newSpeaker) {
+        GroupCallLogger.logDebug("发言人变化", 
+            "from: " + oldSpeaker + " to: " + newSpeaker);
+    }
+    
+    @Override
+    public void onCallEnded(@NonNull String reason) {
+        GroupCallLogger.logCriticalFlow("通话结束", reason, "群组通话已结束");
+        // 群组通话结束时自动关闭对话框
+        dismiss();
+    }
+    
+    @Override
+    public void onMembersInfoUpdated() {
+        // 🔧 关键修复：成员信息更新时刷新UI显示
+        GroupCallLogger.logCriticalFlow("成员信息更新", "刷新UI", 
+            "用户名和头像已更新，刷新九宫格显示");
+        refreshMemberList();
     }
 }

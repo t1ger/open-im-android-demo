@@ -1530,6 +1530,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         try {
             groupMembers.clear();
             
+            // 🔧 关键修复：先创建基础成员对象，然后异步获取用户信息
             for (String memberId : memberIds) {
                 GroupCallMember member = new GroupCallMember(memberId);
                 member.setState(CallMemberState.INVITING); // 初始状态为邀请中
@@ -1538,9 +1539,98 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             
             L.d("CallingVM", "群组成员初始化完成: " + groupMembers.size() + " 人");
             
+            // 🔧 关键修复：异步获取所有成员的IM用户信息
+            fetchMembersUserInfo(memberIds);
+            
         } catch (Exception e) {
             L.w("CallingVM", "初始化群组成员失败: " + e.getMessage());
         }
+    }
+    
+    /**
+     * 🔧 从 IM 系统获取成员的真实用户信息（昵称和头像）
+     */
+    private void fetchMembersUserInfo(List<String> memberIds) {
+        if (memberIds == null || memberIds.isEmpty()) {
+            return;
+        }
+        
+        try {
+            // 使用 OpenIM 的 getUsersInfo 接口获取用户信息
+            OpenIMClient.getInstance().userInfoManager.getUsersInfo(new OnBase<List<PublicUserInfo>>() {
+                @Override
+                public void onError(int code, String error) {
+                    LogExceptionHandler.handleException("CallingVM", "获取群组成员用户信息失败", 
+                        LogExceptionHandler.ExceptionType.NETWORK_ERROR, null);
+                    L.e("CallingVM", "获取群组成员用户信息失败: " + error + ", code: " + code);
+                }
+                
+                @Override
+                public void onSuccess(List<PublicUserInfo> userInfos) {
+                    if (userInfos == null || userInfos.isEmpty()) {
+                        L.w("CallingVM", "获取的用户信息列表为空");
+                        return;
+                    }
+                    
+                    // 更新每个成员的用户信息
+                    for (PublicUserInfo userInfo : userInfos) {
+                        updateGroupMemberUserInfo(userInfo.getUserID(), userInfo.getNickname(), userInfo.getFaceURL());
+                    }
+                    
+                    L.d("CallingVM", "群组成员用户信息获取成功，更新了 " + userInfos.size() + " 个成员");
+                    
+                    // 通知 UI 刷新显示
+                    notifyGroupMembersUpdated();
+                }
+            }, memberIds);
+            
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "获取群组成员用户信息异常", 
+                LogExceptionHandler.ExceptionType.UNKNOWN_ERROR, e);
+        }
+    }
+    
+    /**
+     * 更新指定成员的用户信息
+     */
+    private void updateGroupMemberUserInfo(String userId, String nickname, String faceURL) {
+        try {
+            for (GroupCallMember member : groupMembers) {
+                if (userId.equals(member.getUserID())) {
+                    member.setNickname(nickname);
+                    member.setAvatar(faceURL);
+                    
+                    L.d("CallingVM", "更新成员信息: " + userId + " -> " + nickname);
+                    break;
+                }
+            }
+        } catch (Exception e) {
+            L.w("CallingVM", "更新成员信息失败: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * 通知 UI 群组成员信息已更新
+     */
+    private void notifyGroupMembersUpdated() {
+        // 在 UI 线程中通知更新
+        Common.UIHandler.post(() -> {
+            try {
+                // 通知群组通话状态管理器成员信息已更新
+                if (groupCallStateManager != null) {
+                    groupCallStateManager.notifyMembersInfoUpdated();
+                }
+                
+                // 通知参与者变更监听器（如果有）
+                if (onParticipantsChangeListener != null) {
+                    onParticipantsChangeListener.onChange(callViewModel.getAllParticipants());
+                }
+                
+                L.d("CallingVM", "通知 UI 刷新群组成员显示");
+            } catch (Exception e) {
+                L.w("CallingVM", "通知 UI 刷新失赅: " + e.getMessage());
+            }
+        });
     }
     
     /**
