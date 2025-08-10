@@ -98,25 +98,35 @@ public abstract class BaseCallDialog extends BaseDialog {
     public final void bindData(SignalingInfo signalingInfo) {
         this.signalingInfo = signalingInfo;
         
+        android.util.Log.d("GroupCallFlow", "🔧 [BaseCallDialog] 开始绑定数据 - 类型: " + this.getClass().getSimpleName());
+        
         try {
             // 更新信令信息到状态管理器
+            android.util.Log.d("GroupCallFlow", "📊 [BaseCallDialog] 更新信令信息到状态管理器");
             callingVM.updateSignalingInfo(signalingInfo);
             
             // 子类处理具体的数据绑定
+            android.util.Log.d("GroupCallFlow", "🎯 [BaseCallDialog] 调用子类bindSpecificData - " + this.getClass().getSimpleName());
             bindSpecificData(signalingInfo);
             
             // 发起信令通话（如果是呼出）
             if (callingVM.isCallOut) {
+                android.util.Log.d("GroupCallFlow", "📞 [BaseCallDialog] 发起信令通话 - 呼出模式");
                 callingVM.signalingInvite(signalingInfo);
             }
             
             // 绑定用户信息
+            android.util.Log.d("GroupCallFlow", "👤 [BaseCallDialog] 绑定用户信息");
             bindUserInfo(signalingInfo);
             
             // 设置事件监听
+            android.util.Log.d("GroupCallFlow", "🔊 [BaseCallDialog] 设置事件监听");
             setupEventListeners(signalingInfo);
             
+            android.util.Log.d("GroupCallFlow", "✅ [BaseCallDialog] 数据绑定完成 - " + this.getClass().getSimpleName());
+            
         } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [BaseCallDialog] 数据绑定异常 - " + this.getClass().getSimpleName() + ": " + e.getMessage(), e);
             LogExceptionHandler.handleException("BaseCallDialog", "绑定数据失败", 
                 LogExceptionHandler.ExceptionType.DATA_ERROR, e);
         }
