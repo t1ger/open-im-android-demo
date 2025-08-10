@@ -104,6 +104,9 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     private String groupRoomId = "";
     private String groupId = "";
     
+    // ✅ 当前信令信息缓存，支持无参数的accept()方法
+    private SignalingInfo currentSignalingInfo = null;
+    
     // ✅ 移除重复字段，统一使用 stateManager 获取状态
     
     // === 业界最佳实践组件 ===
@@ -119,21 +122,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         return resourcePool;
     }
     
-    /**
-     * 判断是否为群组通话
-     * @param signalingInfo 信令信息
-     * @return true为群组通话，false为单人通话
-     */
-    private boolean isGroupCall(SignalingInfo signalingInfo) {
-        try {
-            // 通过被邀请者列表长度判断：大于1人为群组通话
-            List<String> inviteeList = signalingInfo.getInvitation().getInviteeUserIDList();
-            return inviteeList != null && inviteeList.size() > 1;
-        } catch (Exception e) {
-            L.w("CallingVM", "判断群组通话失败: " + e.getMessage());
-            return false;
-        }
-    }
+
 
     /**
      * 兼容方法，供CallDialog调用
@@ -382,14 +371,51 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     };
 
     public void signalingInvite(SignalingInfo signalingInfo) {
-        // 检查是否为群组通话
-        if (isGroupCall(signalingInfo)) {
-            // 群组通话发起逻辑
-            signalingGroupInvite(signalingInfo);
-        } else {
-            // 单人通话发起逻辑
-            signalingPersonalInvite(signalingInfo);
-        }
+        // ✅ 缓存当前信令信息
+        this.currentSignalingInfo = signalingInfo;
+        
+        // ✅ 恢复原有逻辑为主流程，保证单人通话不受影响
+        sendSignaling(Constants.MsgType.callingInvite, signalingInfo, new OnMsgSendCallback() {
+            @Override
+            public void onSuccess(Message s) {
+                getTokenAndConnectRoom(signalingInfo, new OnBase<SignalingCertificate>() {
+                    @Override
+                    public void onSuccess(SignalingCertificate data) {
+                        // ✅ 延迟分支：仅在连接房间时区分群组和单人逻辑
+                        if (CallStateManager.isGroupCall(signalingInfo)) {
+                            // 群组通话：发起方连接逻辑
+                            connectToGroupRoomAsCaller(data, signalingInfo);
+                        } else {
+                            // 单人通话：保持原有逻辑
+                            connectToRoom(data);
+                        }
+                    }
+                    
+                    @Override
+                    public void onError(int code, String error) {
+                        // ✅ 统一错误处理
+                        L.e("CallingVM", "获取令牌失败: " + error);
+                        if (CallStateManager.isGroupCall(signalingInfo)) {
+                            handleGroupCallError("群组通话发起失败", new Exception(error));
+                        } else {
+                            // 单人通话错误处理（保持兼容）
+                            dismissUI();
+                        }
+                    }
+                });
+            }
+            
+            @Override
+            public void onError(int code, String error) {
+                // ✅ 统一信令发送错误处理
+                L.e("CallingVM", "发送邀请信令失败: " + error);
+                if (CallStateManager.isGroupCall(signalingInfo)) {
+                    handleGroupCallError("群组通话邀请失败", new Exception(error));
+                } else {
+                    dismissUI();
+                }
+            }
+        });
     }
     
     /**
@@ -400,8 +426,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         try {
             L.d("CallingVM", "发起群组通话");
             
-            // 设置为发起方
-            isCallOut = true;
+            // ✅ 移除错误的isCallOut设置，保持构造函数中的原始值
             
             // 发送群组邀请信令
             sendSignaling(Constants.MsgType.callingInvite, signalingInfo, new OnMsgSendCallback() {
@@ -1270,20 +1295,15 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         try {
             L.d("CallingVM", "接受通话");
             
-            // 从状态管理器获取当前信令信息
-            SignalingInfo currentSignaling = getCurrentSignalingInfo();
-            if (currentSignaling == null) {
-                L.e("CallingVM", "无法获取当前信令信息，接受通话失败");
+            // ✅ 使用缓存的当前信令信息
+            if (currentSignalingInfo == null) {
+                L.e("CallingVM", "当前信令信息为空，接受通话失败");
                 return;
             }
             
-            if (isGroupCall()) {
-                // 群组通话接受逻辑
-                acceptGroupCall(currentSignaling);
-            } else {
-                // 单人通话接受逻辑
-                accept(currentSignaling);
-            }
+            // ✅ 直接调用带参数的accept方法，简化逻辑
+            accept(currentSignalingInfo);
+            
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "接受通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
         }
@@ -1557,24 +1577,37 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     }
     
     /**
-     * 接受单人通话（带SignalingInfo参数）
+     * 接受通话（带SignalingInfo参数）
+     * ✅ 修复: 使用延迟分支策略，支持单人和群组通话
      */
     public void accept(SignalingInfo signalingInfo) {
         try {
-            L.d("CallingVM", "接受单人通话");
-            signalingAccept(signalingInfo, new OnBase() {
-                @Override
-                public void onError(int code, String error) {
-                    L.e("CallingVM", "接受通话失败: " + error);
-                }
-                
-                @Override
-                public void onSuccess(Object data) {
-                    L.d("CallingVM", "接受通话成功");
-                }
-            });
+            // ✅ 更新缓存
+            this.currentSignalingInfo = signalingInfo;
+            
+            L.d("CallingVM", "接受通话");
+            
+            if (CallStateManager.isGroupCall(signalingInfo)) {
+                // 群组通话接受逻辑
+                L.d("CallingVM", "开始接受群组通话");
+                acceptGroupCall(signalingInfo);
+            } else {
+                // 单人通话接受逻辑
+                L.d("CallingVM", "开始接受单人通话");
+                signalingAccept(signalingInfo, new OnBase() {
+                    @Override
+                    public void onError(int code, String error) {
+                        L.e("CallingVM", "接受单人通话失败: " + error);
+                    }
+                    
+                    @Override
+                    public void onSuccess(Object data) {
+                        L.d("CallingVM", "接受单人通话成功");
+                    }
+                });
+            }
         } catch (Exception e) {
-            LogExceptionHandler.handleException("CallingVM", "接受单人通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+            LogExceptionHandler.handleException("CallingVM", "接受通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
         }
     }
     
@@ -1586,20 +1619,15 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         try {
             L.d("CallingVM", "拒绝通话");
             
-            // 从状态管理器获取当前信令信息
-            SignalingInfo currentSignaling = getCurrentSignalingInfo();
-            if (currentSignaling == null) {
-                L.e("CallingVM", "无法获取当前信令信息，拒绝通话失败");
+            // ✅ 使用缓存的当前信令信息
+            if (currentSignalingInfo == null) {
+                L.e("CallingVM", "当前信令信息为空，拒绝通话失败");
                 return;
             }
             
-            if (isGroupCall()) {
-                // 群组通话拒绝逻辑
-                rejectGroupCall(currentSignaling);
-            } else {
-                // 单人通话拒绝逻辑
-                reject(currentSignaling);
-            }
+            // ✅ 直接调用带参数的reject方法
+            reject(currentSignalingInfo);
+            
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "拒绝通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
         }
@@ -1665,20 +1693,15 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         try {
             L.d("CallingVM", "挂断通话");
             
-            // 从状态管理器获取当前信令信息
-            SignalingInfo currentSignaling = getCurrentSignalingInfo();
-            if (currentSignaling == null) {
-                L.e("CallingVM", "无法获取当前信令信息，挂断通话失败");
+            // ✅ 使用缓存的当前信令信息
+            if (currentSignalingInfo == null) {
+                L.e("CallingVM", "当前信令信息为空，挂断通话失败");
                 return;
             }
             
-            if (isGroupCall()) {
-                // 群组通话挂断逻辑
-                hangupGroupCall(currentSignaling);
-            } else {
-                // 单人通话挂断逻辑
-                hangup(currentSignaling);
-            }
+            // ✅ 直接调用带参数的hangup方法
+            hangup(currentSignalingInfo);
+            
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "挂断通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
         }
@@ -1769,14 +1792,27 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     }
     
     /**
-     * 挂断单人通话（带SignalingInfo参数）
+     * 挂断通话（带SignalingInfo参数）
+     * ✅ 修复: 使用延迟分支策略，支持单人和群组通话
      */
     public void hangup(SignalingInfo signalingInfo) {
         try {
-            L.d("CallingVM", "挂断单人通话");
-            signalingCancel(signalingInfo); // 使用现有的signalingCancel方法
+            // ✅ 更新缓存
+            this.currentSignalingInfo = signalingInfo;
+            
+            L.d("CallingVM", "挂断通话");
+            
+            if (CallStateManager.isGroupCall(signalingInfo)) {
+                // 群组通话挂断逻辑
+                L.d("CallingVM", "开始挂断群组通话");
+                hangupGroupCall(signalingInfo);
+            } else {
+                // 单人通话挂断逻辑
+                L.d("CallingVM", "开始挂断单人通话");
+                signalingHungUp(signalingInfo); // 单人通话使用signalingHungUp
+            }
         } catch (Exception e) {
-            LogExceptionHandler.handleException("CallingVM", "挂断单人通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+            LogExceptionHandler.handleException("CallingVM", "挂断通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
         }
     }
 
