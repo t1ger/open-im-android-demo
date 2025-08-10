@@ -94,6 +94,8 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
 
         if (isSelectMember) {
             vm.groupId = groupId;
+            // ✅ 修复：在成员选择模式下也需要获取群信息，避免空指针异常
+            vm.getGroupsInfo();
             vm.getGroupMemberList();
         } else
             vm.getAllFriend();
@@ -339,8 +341,14 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                 
                 try {
                     // 处理群管理员
+                    // ✅ 修复：在isSelectMember模式下，groupsInfo可能为null
+                    String groupOwnerId = "";
+                    if (vm.groupsInfo.getValue() != null) {
+                        groupOwnerId = vm.groupsInfo.getValue().getOwnerUserID();
+                    }
+                    
                     for (ExGroupMemberInfo memberInfo : vm.exGroupManagement.getValue()) {
-                        if (!memberInfo.groupMembersInfo.getUserID().equals(vm.groupsInfo.getValue().getOwnerUserID())) {
+                        if (!memberInfo.groupMembersInfo.getUserID().equals(groupOwnerId)) {
                             String nickName = memberInfo.groupMembersInfo.getNickname();
                             String letter = Pinyin.toPinyin(nickName.charAt(0));
                             memberInfo.sortLetter = (letter.charAt(0) + "").trim().toUpperCase();
@@ -363,7 +371,11 @@ public class InitiateGroupActivity extends BaseActivity<GroupVM, ActivityInitiat
                 // 🔥 使用适配器模式转换数据
                 List<ExUserInfo> exUserInfos = new ArrayList<>();
                 String currentUserId = BaseApp.inst().loginCertificate.userID;
-                String groupOwnerId = vm.groupsInfo.getValue() != null ? vm.groupsInfo.getValue().getOwnerUserID() : "";
+                // ✅ 重新获取groupOwnerId以确保作用域正确
+                String groupOwnerId = "";
+                if (vm.groupsInfo.getValue() != null) {
+                    groupOwnerId = vm.groupsInfo.getValue().getOwnerUserID();
+                }
                 boolean isForGroupCall = getIntent().getBooleanExtra("isGroupCall", false);
                 
                 for (ExGroupMemberInfo exGroupMemberInfo : groupMemberInfo) {
