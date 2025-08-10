@@ -151,10 +151,10 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
             initUnifiedGridLayout();
             android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 九宫格布局初始化完成");
             
-            // 🔧 添加测试数据确保九宫格可见
-            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备添加测试数据到九宫格");
-            addTestDataToGrid();
-            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 测试数据添加完成");
+            // 🔧 关键修复：初始化时加载真实成员数据
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备加载成员数据到九宫格");
+            refreshMemberList();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 成员数据加载完成");
             
             // 配置视频相关控件
             android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备执行setupVideoControls");
@@ -179,59 +179,7 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
         GroupCallLogger.logCriticalFlow("数据绑定", "完成", "群组通话数据绑定成功");
     }
     
-    /**
-     * 添加测试数据到九宫格以验证显示
-     */
-    private void addTestDataToGrid() {
-        if (memberAdapter == null) {
-            android.util.Log.e("GroupCallFlow", "❌ [addTestDataToGrid] memberAdapter为null!");
-            return;
-        }
-        
-        try {
-            // 创建测试成员数据
-            java.util.List<Object> testMembers = new java.util.ArrayList<>();
-            
-            // 添加自己作为第一个成员
-            Object selfMember = createTestMember("我", true);
-            if (selfMember != null) {
-                testMembers.add(selfMember);
-                android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] 添加自己成员");
-            }
-            
-            // 添加其他成员
-            Object otherMember = createTestMember("群友", false);
-            if (otherMember != null) {
-                testMembers.add(otherMember);
-                android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] 添加其他成员");
-            }
-            
-            android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] 测试数据创建完成，数量: " + testMembers.size());
-            
-            // 通知适配器数据更新
-            memberAdapter.notifyDataSetChanged();
-            android.util.Log.e("GroupCallFlow", "✅ [addTestDataToGrid] notifyDataSetChanged已调用");
-            
-        } catch (Exception e) {
-            android.util.Log.e("GroupCallFlow", "❌ [ERROR] addTestDataToGrid异常: " + e.getMessage(), e);
-        }
-    }
-    
-    /**
-     * 创建测试成员数据
-     */
-    private Object createTestMember(String name, boolean isSelf) {
-        try {
-            // 这里需要根据实际的Member类来创建对象
-            // 先返回null，让我们看看日志输出
-            android.util.Log.e("GroupCallFlow", "🔍 [createTestMember] 创建测试成员: " + name + ", isSelf: " + isSelf);
-            return null; // 暂时返回null
-        } catch (Exception e) {
-            android.util.Log.e("GroupCallFlow", "❌ [ERROR] createTestMember异常: " + e.getMessage(), e);
-            return null;
-        }
-    }
-    
+
     /**
      * 配置视频相关控件
      */
@@ -470,14 +418,30 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
      */
     private void refreshMemberList() {
         if (memberAdapter != null) {
-            int memberCount = callingVM.getGroupMembers().size();
+            android.util.Log.e("GroupCallFlow", "🔄🔄🔄 [refreshMemberList] 开始刷新成员列表");
+            
+            // 🔧 关键修复：获取真实的成员数据
+            java.util.List<io.openim.android.ouicalling.entity.GroupCallMember> groupMembers = callingVM.getGroupMembers();
+            int memberCount = groupMembers.size();
+            
+            android.util.Log.e("GroupCallFlow", "👥 [refreshMemberList] 获取到成员数量: " + memberCount);
             GroupCallLogger.logDebug("成员刷新", "刷新群组成员列表, 数量: " + memberCount);
             
-            // 获取成员列表并更新适配器
-            memberAdapter.notifyDataSetChanged();
+            // 🔧 关键修复：传递真实数据给适配器
+            if (groupMembers != null && !groupMembers.isEmpty()) {
+                android.util.Log.e("GroupCallFlow", "✅ [refreshMemberList] 更新适配器数据");
+                memberAdapter.updateMembers(groupMembers);
+            } else {
+                android.util.Log.e("GroupCallFlow", "❌ [refreshMemberList] 成员列表为空，传递空列表");
+                memberAdapter.updateMembers(new java.util.ArrayList<>());
+            }
             
             // 根据成员数量调整布局
             adjustGridLayout(memberCount);
+            
+            android.util.Log.e("GroupCallFlow", "✅✅✅ [refreshMemberList] 成员列表刷新完成");
+        } else {
+            android.util.Log.e("GroupCallFlow", "❌ [refreshMemberList] memberAdapter为null");
         }
     }
     
