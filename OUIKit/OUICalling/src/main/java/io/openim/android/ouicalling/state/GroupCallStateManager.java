@@ -416,7 +416,7 @@ public class GroupCallStateManager {
     public void notifyMembersInfoUpdated() {
         try {
             // 通知所有监听器成员信息已更新
-            for (StateChangeObserver observer : stateObservers) {
+            for (StateChangeObserver observer : observers) {
                 observer.onMembersInfoUpdated();
             }
             

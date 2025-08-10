@@ -30,6 +30,7 @@ import io.openim.android.ouicalling.entity.GroupCallMember;
 // 已移除MultiPartySignaling，使用标准SignalingInfo
 // 已移除SignalingDeduplicator，使用简化的标准信令处理流程
 import io.openim.android.ouicalling.state.CallStateManager;
+import io.openim.android.ouicalling.state.GroupCallStateManager;
 import io.openim.android.ouicalling.utils.VideoResourcePool;
 
 import io.livekit.android.renderer.TextureViewRenderer;
@@ -56,6 +57,7 @@ import io.openim.android.sdk.listener.OnBase;
 import io.openim.android.sdk.listener.OnMsgSendCallback;
 import io.openim.android.sdk.models.Message;
 import io.openim.android.sdk.models.OfflinePushInfo;
+import io.openim.android.sdk.models.PublicUserInfo;
 import io.openim.android.sdk.models.SignalingCertificate;
 import io.openim.android.sdk.models.SignalingInfo;
 import io.reactivex.functions.Function;
@@ -94,6 +96,8 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     // === 统一状态管理 ===
     // 基于信令数据的状态管理器
     private final CallStateManager stateManager = new CallStateManager();
+    // 群组通话状态管理器
+    public GroupCallStateManager groupCallStateManager;
     // 群组通话成员列表（线程安全）
     public final CopyOnWriteArrayList<GroupCallMember> groupMembers = new CopyOnWriteArrayList<>();
     // 当前发言人ID（v1.2实现）
@@ -511,7 +515,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
                         localSpeakerVideoView.setTag(localVideoTrack);
                     }
                 }
-                callViewModel.subscribe(callViewModel.getAllParticipants(), (v) -> {
+                callViewModel.subscribe(callViewModel.getAllGroupParticipants(), (v) -> {
                     if (v.isEmpty()) return null;
                     if (null != onParticipantsChangeListener) {
                         onParticipantsChangeListener.onChange(v);
@@ -1623,7 +1627,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
                 
                 // 通知参与者变更监听器（如果有）
                 if (onParticipantsChangeListener != null) {
-                    onParticipantsChangeListener.onChange(callViewModel.getAllParticipants());
+                    onParticipantsChangeListener.onChange(callViewModel.getAllGroupParticipants().getValue());
                 }
                 
                 L.d("CallingVM", "通知 UI 刷新群组成员显示");
