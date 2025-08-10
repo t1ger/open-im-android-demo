@@ -1760,37 +1760,65 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     }
     
     /**
-     * 挂断通话/群组通话
-     * ✅ 修复: 支持群组通话和单人通话的统一处理
+     * 挂断通话 - 统一接口
+     * ✅ 遵循架构设计原则：参数显式传递，支持单人和群组通话
+     * @param signalingInfo 信令信息（从调用方显式传入）
      */
-    public void hangup() {
+    public void hangup(SignalingInfo signalingInfo) {
         try {
             L.e("CallingVM", "========== 开始挂断通话 ==========");
-            L.e("CallingVM", "currentSignalingInfo是否为空: " + (currentSignalingInfo == null));
+            L.e("CallingVM", "signalingInfo是否为空: " + (signalingInfo == null));
             L.e("CallingVM", "isStartCall状态: " + isStartCall);
             L.e("CallingVM", "isCallOut状态: " + isCallOut);
-            L.e("CallingVM", "dismissListener是否为空: " + (dismissListener == null));
             
-            // ✅ 使用缓存的当前信令信息
-            if (currentSignalingInfo == null) {
-                L.e("CallingVM", "❌ 致命错误：当前信令信息为空，挂断通话失败");
-                L.e("CallingVM", "尝试强制关闭UI...");
+            if (signalingInfo == null) {
+                L.e("CallingVM", "❌ 错误：信令信息为空，挂断失败");
                 dismissUI();
                 return;
             }
             
-            L.e("CallingVM", "信令信息有效，继续挂断流程");
-            L.e("CallingVM", "房间ID: " + (currentSignalingInfo.getInvitation() != null ? currentSignalingInfo.getInvitation().getRoomID() : "null"));
+            // ✅ 更新缓存（兼容性）
+            this.currentSignalingInfo = signalingInfo;
             
-            // ✅ 直接调用带参数的hangup方法
-            hangup(currentSignalingInfo);
+            L.e("CallingVM", "信令信息有效，继续挂断流程");
+            L.e("CallingVM", "房间ID: " + (signalingInfo.getInvitation() != null ? signalingInfo.getInvitation().getRoomID() : "null"));
+            
+            // ✅ 统一的挂断逻辑：根据信令类型选择处理方式
+            if (CallStateManager.isGroupCall(signalingInfo)) {
+                L.e("CallingVM", "群组通话挂断处理");
+                handleGroupCallHangup(signalingInfo);
+            } else {
+                L.e("CallingVM", "单人通话挂断处理");
+                handleSingleCallHangup(signalingInfo);
+            }
             
         } catch (Exception e) {
             L.e("CallingVM", "挂断通话发生异常: " + e.getMessage(), e);
             LogExceptionHandler.handleException("CallingVM", "挂断通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
-            // 异常时强制关闭UI
             dismissUI();
         }
+    }
+    
+    /**
+     * 单人通话挂断处理
+     * ✅ 复用main分支的成熟逻辑
+     */
+    private void handleSingleCallHangup(SignalingInfo signalingInfo) {
+        L.e("CallingVM", "单人通话挂断: isStartCall=" + isStartCall);
+        
+        // 复用原有的成熟逻辑
+        signalingHungUp(signalingInfo);
+    }
+    
+    /**
+     * 群组通话挂断处理
+     * ✅ 专门处理群组通话的特殊逻辑
+     */
+    private void handleGroupCallHangup(SignalingInfo signalingInfo) {
+        L.e("CallingVM", "群组通话挂断: isStartCall=" + isStartCall);
+        
+        // 群组通话的特殊处理逻辑
+        hangupGroupCall(signalingInfo);
     }
     
     /**
@@ -1803,7 +1831,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             
             // 如果通话已开始，发送挂断信令
             if (isStartCall) {
-                sendSignaling(Constants.MsgType.callingHungup, signalingInfo, new OnMsgSendCallback() {
+                sendSignaling(Constants.MsgType.multiPartyHangup, signalingInfo, new OnMsgSendCallback() {
                     @Override
                     public void onError(int code, String error) {
                         L.e("CallingVM", "群组通话挂断信令发送失败: " + error);
@@ -1877,30 +1905,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         }
     }
     
-    /**
-     * 挂断通话（带SignalingInfo参数）
-     * ✅ 修复: 使用延迟分支策略，支持单人和群组通话
-     */
-    public void hangup(SignalingInfo signalingInfo) {
-        try {
-            // ✅ 更新缓存
-            this.currentSignalingInfo = signalingInfo;
-            
-            L.d("CallingVM", "挂断通话");
-            
-            if (CallStateManager.isGroupCall(signalingInfo)) {
-                // 群组通话挂断逻辑
-                L.d("CallingVM", "开始挂断群组通话");
-                hangupGroupCall(signalingInfo);
-            } else {
-                // 单人通话挂断逻辑
-                L.d("CallingVM", "开始挂断单人通话");
-                signalingHungUp(signalingInfo); // 单人通话使用signalingHungUp
-            }
-        } catch (Exception e) {
-            LogExceptionHandler.handleException("CallingVM", "挂断通话", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
-        }
-    }
+
 
     // === 私有辅助方法 ===
     

@@ -802,15 +802,15 @@ public class CallDialog extends BaseDialog {
             });
         }
 
-        // 通话控制按钮
+        // 通话控制按钮 - 迁移到统一方案
         if (view.hangUp != null) {
             view.hangUp.setOnClickListener(new OnDedrepClickListener() {
                 @Override
                 public void click(View v) {
                     callingVM.renewalDB(callingVM.buildPrimaryKey(signalingInfo), (realm,
                                                                                    callHistory) -> callHistory.setDuration((int) (System.currentTimeMillis() - callHistory.getDate())));
-
-                    callingVM.signalingHungUp(signalingInfo);
+                    // ✅ 迁移：使用统一的挂断接口
+                    callingVM.hangup(signalingInfo);
                 }
             });
         }
@@ -819,7 +819,8 @@ public class CallDialog extends BaseDialog {
             view.reject.setOnClickListener(new OnDedrepClickListener() {
                 @Override
                 public void click(View v) {
-                    callingVM.signalingHungUp(signalingInfo);
+                    // ✅ 迁移：使用统一的挂断接口（拒接也是挂断的一种）
+                    callingVM.hangup(signalingInfo);
                 }
             });
         }
@@ -946,15 +947,15 @@ public class CallDialog extends BaseDialog {
             });
         }
 
-        // 通话控制按钮
+        // 通话控制按钮 - 迁移到统一方案
         if (groupViewHelper.hangUp != null) {
             groupViewHelper.hangUp.setOnClickListener(new OnDedrepClickListener() {
                 @Override
                 public void click(View v) {
                     callingVM.renewalDB(callingVM.buildPrimaryKey(signalingInfo), (realm,
                                                                                    callHistory) -> callHistory.setDuration((int) (System.currentTimeMillis() - callHistory.getDate())));
-
-                    callingVM.signalingHungUp(signalingInfo);
+                    // ✅ 迁移：使用统一的挂断接口，支持群组通话特殊逻辑
+                    callingVM.hangup(signalingInfo);
                 }
             });
         }
@@ -963,7 +964,8 @@ public class CallDialog extends BaseDialog {
             groupViewHelper.reject.setOnClickListener(new OnDedrepClickListener() {
                 @Override
                 public void click(View v) {
-                    callingVM.signalingHungUp(signalingInfo);
+                    // ✅ 迁移：使用统一的挂断接口（群组拒接也是挂断的一种）
+                    callingVM.hangup(signalingInfo);
                 }
             });
         }

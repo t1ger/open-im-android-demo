@@ -180,7 +180,11 @@ public class SingleCallDialog extends BaseCallDialog {
         view.hangUp.setOnClickListener(new OnDedrepClickListener() {
             @Override
             public void click(View v) {
-                callingVM.hangup();
+                // ✅ 修复：按照main分支的方式直接传递signalingInfo参数
+                callingVM.renewalDB(CallingVM.buildPrimaryKey(signalingInfo), (realm, callHistory) -> 
+                    callHistory.setDuration((int) (System.currentTimeMillis() - callHistory.getDate()))
+                );
+                callingVM.signalingHungUp(signalingInfo);
                 L.d("SingleCallDialog", "用户挂断通话");
             }
         });
@@ -189,7 +193,8 @@ public class SingleCallDialog extends BaseCallDialog {
         view.reject.setOnClickListener(new OnDedrepClickListener() {
             @Override
             public void click(View v) {
-                callingVM.reject();
+                // ✅ 修复：按照main分支的方式直接传递signalingInfo参数
+                callingVM.signalingHungUp(signalingInfo);
                 L.d("SingleCallDialog", "用户拒接通话");
             }
         });
