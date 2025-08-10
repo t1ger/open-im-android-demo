@@ -51,15 +51,56 @@ public class CallStateManager {
      */
     public static boolean isGroupCall(SignalingInfo signalingInfo) {
         if (signalingInfo == null || signalingInfo.getInvitation() == null) {
+            android.util.Log.d("RootCauseDebug", "❌ [CallStateManager] isGroupCall返回false - 信令为null");
             return false;
         }
         
-        // 只依据SessionType判断 - 这是最权威的业务依据
-        // 删除了错误的GroupID和数量判断逻辑，因为：
-        // 1. GroupID可能为空（临时群组通话）
-        // 2. 单聊也可能有多个invitee（多设备同时通话）
-        // 3. 群聊可能只选1个invitee（在已有群组中添加新成员）
-        return signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT;
+        // 🔍 根本原因调试：详细分析SessionType判断失败的原因
+        try {
+            Object sessionTypeObj = signalingInfo.getInvitation().getSessionType();
+            Object groupChatObj = ConversationType.GROUP_CHAT;
+            
+            android.util.Log.d("RootCauseDebug", "=== SessionType根因调试 ===");
+            android.util.Log.d("RootCauseDebug", "SessionType对象: " + sessionTypeObj);
+            android.util.Log.d("RootCauseDebug", "SessionType类型: " + (sessionTypeObj != null ? sessionTypeObj.getClass().getName() : "null"));
+            android.util.Log.d("RootCauseDebug", "SessionType值: " + sessionTypeObj);
+            android.util.Log.d("RootCauseDebug", "GROUP_CHAT对象: " + groupChatObj);
+            android.util.Log.d("RootCauseDebug", "GROUP_CHAT类型: " + groupChatObj.getClass().getName());
+            android.util.Log.d("RootCauseDebug", "GROUP_CHAT值: " + groupChatObj);
+            
+            // 尝试不同的比较方式
+            boolean directEquals = (sessionTypeObj == groupChatObj);
+            boolean objectEquals = (sessionTypeObj != null && sessionTypeObj.equals(groupChatObj));
+            boolean valueEquals = false;
+            
+            if (sessionTypeObj != null && groupChatObj != null) {
+                valueEquals = sessionTypeObj.toString().equals(groupChatObj.toString());
+            }
+            
+            android.util.Log.d("RootCauseDebug", "== 比较结果 ==");
+            android.util.Log.d("RootCauseDebug", "直接比较(==): " + directEquals);
+            android.util.Log.d("RootCauseDebug", "对象比较(.equals()): " + objectEquals);
+            android.util.Log.d("RootCauseDebug", "字符串比较(.toString()): " + valueEquals);
+            
+            // 如果是整数类型，尝试数值比较
+            if (sessionTypeObj instanceof Number && groupChatObj instanceof Number) {
+                int sessionInt = ((Number) sessionTypeObj).intValue();
+                int groupChatInt = ((Number) groupChatObj).intValue();
+                boolean intEquals = (sessionInt == groupChatInt);
+                android.util.Log.d("RootCauseDebug", "整数比较: " + sessionInt + " == " + groupChatInt + " = " + intEquals);
+            }
+            
+            // 原始判断逻辑
+            boolean result = signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT;
+            android.util.Log.d("RootCauseDebug", "🎯 最终判断结果: " + result);
+            android.util.Log.d("RootCauseDebug", "=== 调试结束 ===");
+            
+            return result;
+            
+        } catch (Exception e) {
+            android.util.Log.e("RootCauseDebug", "❌ [CallStateManager] SessionType判断异常: " + e.getMessage(), e);
+            return false;
+        }
     }
     
     /**

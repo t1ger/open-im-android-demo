@@ -38,8 +38,19 @@ public class CallDialogFactory {
                                       @Nullable DialogInterface.OnDismissListener dismissListener) {
         
         try {
+            // 🔍 根本原因调试：记录进入Factory时的原始信令状态
+            android.util.Log.d("RootCauseDebug", "=== CallDialogFactory创建开始 ===");
+            android.util.Log.d("RootCauseDebug", "SignalingInfo: " + signalingInfo);
+            if (signalingInfo != null && signalingInfo.getInvitation() != null) {
+                android.util.Log.d("RootCauseDebug", "原始SessionType: " + signalingInfo.getInvitation().getSessionType());
+                android.util.Log.d("RootCauseDebug", "原始GroupID: " + signalingInfo.getInvitation().getGroupID());
+                android.util.Log.d("RootCauseDebug", "原始InviteeList: " + signalingInfo.getInvitation().getInviteeUserIDList());
+            }
+            
             // 关键修复点1：通过统一的状态管理器判断通话类型
+            android.util.Log.d("RootCauseDebug", "🔧 开始调用CallStateManager.isGroupCall()...");
             boolean isGroupCall = CallStateManager.isGroupCall(signalingInfo);
+            android.util.Log.d("RootCauseDebug", "📋 CallStateManager.isGroupCall()结果: " + isGroupCall);
             
             L.businessFlow("CallDialogFactory", "创建通话对话框", 
                 "类型: " + (isGroupCall ? "群组" : "单人") + 
