@@ -87,15 +87,10 @@ public class CallDialogFactory {
             boolean isGroupCall = CallStateManager.isGroupCall(signalingInfo);
             String callType = isGroupCall ? "群组通话" : "单人通话";
             
-            try {
-                // 🔧 微信风格：创建错误提示对话框
-                return createErrorDialog(context, callingService, signalingInfo, isCallOut, dismissListener, e, callType);
-                
-            } catch (Exception fallbackException) {
-                // 最终后备：如果错误对话框也创建失败，直接抛出异常
-                android.util.Log.e("GroupCallFlow", "❌ [CallDialogFactory] 错误对话框也创建失败", fallbackException);
-                throw new RuntimeException("系统暂时不可用，请稍后重试", fallbackException);
-            }
+            // ✅ 正确的微信模式：直接抛出异常，让上层处理
+            // 原因：CallDialogFactory只负责创建通话对话框，不负责错误处理UI
+            android.util.Log.e("GroupCallFlow", "❌ [CallDialogFactory] " + callType + "创建失败: " + e.getMessage(), e);
+            throw new CallDialogCreationException(callType + "创建失败", e, isGroupCall);
         }
     }
     
@@ -190,44 +185,24 @@ public class CallDialogFactory {
     }
     
     /**
-     * 微信模式：创建错误提示对话框
-     * 显示友好的错误信息和重试按钮
+     * 通话对话框创建异常
+     * 用于标示具体的通话类型创建失败
      */
-    private static BaseCallDialog createErrorDialog(@NonNull Context context,
-                                                   @NonNull CallingService callingService,
-                                                   @NonNull SignalingInfo signalingInfo,
-                                                   boolean isCallOut,
-                                                   @Nullable DialogInterface.OnDismissListener dismissListener,
-                                                   @NonNull Exception originalException,
-                                                   @NonNull String callType) {
+    public static class CallDialogCreationException extends RuntimeException {
+        private final boolean isGroupCall;
         
-        // 创建基础对话框用于显示错误信息
-        boolean isGroupCall = CallStateManager.isGroupCall(signalingInfo);
-        BaseCallDialog errorDialog;
-        
-        if (isGroupCall) {
-            // 群组通话失败：创建简化版群组对话框显示错误
-            errorDialog = new GroupCallErrorDialog(context, callingService, isCallOut, originalException);
-            android.util.Log.d("GroupCallFlow", "📱 [WeChat模式] 创建群组通话错误对话框");
-        } else {
-            // 单人通话失败：创建简化版单人对话框显示错误
-            errorDialog = new SingleCallErrorDialog(context, callingService, isCallOut, originalException);
-            android.util.Log.d("GroupCallFlow", "📱 [WeChat模式] 创建单人通话错误对话框");
+        public CallDialogCreationException(String message, Throwable cause, boolean isGroupCall) {
+            super(message, cause);
+            this.isGroupCall = isGroupCall;
         }
         
-        // 设置关闭监听器
-        if (dismissListener != null) {
-            errorDialog.setOnDismissListener(dismissListener);
+        public boolean isGroupCall() {
+            return isGroupCall;
         }
         
-        // 绑定基本信令信息（不触发复杂逻辑）
-        try {
-            errorDialog.bindBasicData(signalingInfo);
-        } catch (Exception bindException) {
-            android.util.Log.w("GroupCallFlow", "⚠️ [WeChat模式] 错误对话框绑定数据失败，使用默认配置", bindException);
+        public String getCallType() {
+            return isGroupCall ? "群组通话" : "单人通话";
         }
-        
-        return errorDialog;
     }
     
     /**
@@ -264,84 +239,6 @@ public class CallDialogFactory {
         }
     }
     
-    /**
-     * 群组通话错误对话框 - 微信模式
-     * 显示友好的错误信息和重试按钮
-     */
-    private static class GroupCallErrorDialog extends BaseCallDialog {
-        private final Exception originalException;
-        
-        public GroupCallErrorDialog(@NonNull Context context, CallingService callingService, 
-                                   boolean isCallOut, Exception originalException) {
-            super(context, callingService, isCallOut);
-            this.originalException = originalException;
-        }
-        
-        @Override
-        protected void initSpecificView() {
-            // TODO: 创建简化的错误提示界面
-            // 显示："群组通话暂时不可用，请稍后重试"
-            // 按钮：[重试] [取消]
-        }
-        
-        @Override
-        protected void bindSpecificData(SignalingInfo signalingInfo) {
-            // 简化绑定，不触发复杂逻辑
-        }
-        
-        public void bindBasicData(SignalingInfo signalingInfo) {
-            // 只绑定基本信息，不初始化复杂组件
-        }
-        
-        // 其他必需的抽象方法简化实现...
-        @Override
-        protected void bindUserInfo(SignalingInfo signalingInfo) {}
-        @Override
-        protected void setupEventListeners(SignalingInfo signalingInfo) {}
-        @Override
-        protected void handleShrink(boolean isShrink) {}
-        @Override
-        protected void cleanup() {}
-        @Override
-        public void otherSideAccepted() {}
-        @Override
-        public String buildPrimaryKey() { return "error_dialog"; }
-    }
-    
-    /**
-     * 单人通话错误对话框 - 微信模式
-     */
-    private static class SingleCallErrorDialog extends BaseCallDialog {
-        private final Exception originalException;
-        
-        public SingleCallErrorDialog(@NonNull Context context, CallingService callingService, 
-                                    boolean isCallOut, Exception originalException) {
-            super(context, callingService, isCallOut);
-            this.originalException = originalException;
-        }
-        
-        @Override
-        protected void initSpecificView() {
-            // TODO: 创建简化的错误提示界面
-        }
-        
-        @Override
-        protected void bindSpecificData(SignalingInfo signalingInfo) {}
-        
-        public void bindBasicData(SignalingInfo signalingInfo) {}
-        
-        // 其他方法简化实现...
-        @Override
-        protected void bindUserInfo(SignalingInfo signalingInfo) {}
-        @Override
-        protected void setupEventListeners(SignalingInfo signalingInfo) {}
-        @Override
-        protected void handleShrink(boolean isShrink) {}
-        @Override
-        protected void cleanup() {}
-        @Override
-        public void otherSideAccepted() {}
-        @Override
-        public String buildPrimaryKey() { return "error_dialog"; }
-    }
+    // 移除了错误的继承BaseCallDialog的ErrorDialog类
+    // 错误处理应该由CallingService层处理，不在Factory中处理
 }

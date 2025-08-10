@@ -173,7 +173,7 @@ public class CallingServiceImp implements CallingService {
                     }
                 } catch (Exception showException) {
                     android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框显示异常", showException);
-                    // TODO: 显示系统通知或Toast提示
+                    showErrorToast(getContext(), "通话功能暂时不可用，请稍后重试");
                 }
             }
         }
@@ -188,6 +188,26 @@ public class CallingServiceImp implements CallingService {
         }
         return ctx;
     }
+    
+    /**
+     * 微信模式：显示用户友好的错误提示
+     */
+    private void showErrorToast(Context context, String message) {
+        try {
+            // 如果有Activity上下文，在主线程显示Toast
+            if (context instanceof android.app.Activity) {
+                ((android.app.Activity) context).runOnUiThread(() -> {
+                    android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show();
+                });
+            } else {
+                // 使用Application上下文显示Toast
+                android.widget.Toast.makeText(context, message, android.widget.Toast.LENGTH_LONG).show();
+            }
+            android.util.Log.d("GroupCallFlow", "📱 [WeChat模式] 显示错误提示: " + message);
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [CallingService] Toast显示异常", e);
+        }
+    }
 
     private void cancelNotify() {
         isBeCalled = false;
@@ -199,7 +219,7 @@ public class CallingServiceImp implements CallingService {
         MediaPlayerUtil.INSTANCE.release();
     }
 
-    public Dialog buildCallDialog(Context context,
+    public BaseCallDialog buildCallDialog(Context context,
                                   DialogInterface.OnDismissListener dismissListener,
                                   boolean isCallOut) {
         try {
@@ -272,17 +292,29 @@ public class CallingServiceImp implements CallingService {
             // 插入数据库记录（仅单人通话）
             insertCallHistoryRecord();
             
-        } catch (Exception e) {
-            // 📱 微信模式：优雅处理异常，显示用户友好的错误提示
-            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框创建异常: " + e.getMessage(), e);
-            LogExceptionHandler.handleException(TAG, "创建通话对话框失败", 
+        } catch (CallDialogFactory.CallDialogCreationException e) {
+            // 📱 微信模式：显示用户友好的Toast提示
+            android.util.Log.e("GroupCallFlow", "❌ [CallingService] " + e.getCallType() + "创建失败: " + e.getMessage(), e);
+            LogExceptionHandler.handleException(TAG, e.getCallType() + "创建失败", 
                 LogExceptionHandler.ExceptionType.UI_ERROR, e);
             
-            // CallDialogFactory已经处理了异常降级逻辑，这里不应该再次抛出异常
-            // 如果到这里，说明错误对话框也创建失败，系统有严重问题
-            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 系统严重错误，无法创建任何对话框");
+            // 显示类似微信的错误提示
+            String errorMessage = e.isGroupCall() ? 
+                "群组通话暂时不可用，请稍后重试" : 
+                "通话功能暂时不可用，请稍后重试";
             
-            // 最终后备：返回null，让上层处理
+            showErrorToast(context, errorMessage);
+            
+            return null;
+            
+        } catch (Exception e) {
+            // 其他未预期的异常
+            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 未知异常: " + e.getMessage(), e);
+            LogExceptionHandler.handleException(TAG, "未知错误", 
+                LogExceptionHandler.ExceptionType.CRITICAL_ERROR, e);
+            
+            showErrorToast(context, "系统错误，请稍后重试");
+            
             return null;
         }
         
