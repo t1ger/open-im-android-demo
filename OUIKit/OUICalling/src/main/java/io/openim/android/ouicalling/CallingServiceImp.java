@@ -197,13 +197,17 @@ public class CallingServiceImp implements CallingService {
             
             // 🔧 关键修复：先验证信令类型，避免被意外修改
             String originalCallType = CallDialogFactory.getCallTypeDescription(signalingInfo);
-            L.critical(TAG, "原始信令类型: " + originalCallType);
+            L.critical(TAG, "✅ 原始信令类型: " + originalCallType);
             
             // 调试输出：检查SessionType
             if (signalingInfo.getInvitation() != null) {
-                L.critical(TAG, "SessionType值: " + signalingInfo.getInvitation().getSessionType());
-                L.critical(TAG, "GROUP_CHAT常量: " + ConversationType.GROUP_CHAT);
-                L.critical(TAG, "是否相等: " + (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT));
+                L.critical(TAG, "📋 SessionType值: " + signalingInfo.getInvitation().getSessionType());
+                L.critical(TAG, "📋 GROUP_CHAT常量: " + ConversationType.GROUP_CHAT);
+                L.critical(TAG, "📋 SINGLE_CHAT常量: " + ConversationType.SINGLE_CHAT);
+                L.critical(TAG, "📋 GroupID: " + signalingInfo.getInvitation().getGroupID());
+                L.critical(TAG, "📋 InviteeList大小: " + (signalingInfo.getInvitation().getInviteeUserIDList() != null ? signalingInfo.getInvitation().getInviteeUserIDList().size() : "null"));
+                L.critical(TAG, "🔍 是否相等: " + (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT));
+                L.critical(TAG, "🔍 CallStateManager判断结果: " + CallStateManager.isGroupCall(signalingInfo));
             }
             
             // ✅ 直接使用CallDialogFactory，跳过可能修改信令的SignalingProcessor

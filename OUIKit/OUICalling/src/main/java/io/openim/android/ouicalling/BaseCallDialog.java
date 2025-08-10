@@ -15,6 +15,7 @@ import io.openim.android.ouicore.services.CallingService;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
+import io.openim.android.ouicore.utils.MediaPlayerUtil;
 import com.hjq.window.EasyWindow;
 import io.openim.android.ouicore.base.BaseApp;
 import io.openim.android.sdk.models.SignalingInfo;
@@ -150,8 +151,36 @@ public abstract class BaseCallDialog extends BaseDialog {
     }
     
     @Override
+    public void show() {
+        playRingtone();
+        super.show();
+    }
+    
+    /**
+     * 播放铃声 - 统一使用incoming_call_ring铃声
+     */
+    public void playRingtone() {
+        try {
+            Common.wakeUp(context);
+            
+            if (!MediaPlayerUtil.INSTANCE.isPlaying()) {
+                // 统一使用incoming_call_ring铃声，不管是呼出还是被呼叫
+                MediaPlayerUtil.INSTANCE.initMedia(BaseApp.inst(), R.raw.incoming_call_ring);
+                MediaPlayerUtil.INSTANCE.loopPlay();
+            }
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("BaseCallDialog", "播放铃声失败", 
+                LogExceptionHandler.ExceptionType.UI_ERROR, e);
+        }
+    }
+    
+    @Override
     public void dismiss() {
         try {
+            // 停止播放铃声
+            MediaPlayerUtil.INSTANCE.pause();
+            MediaPlayerUtil.INSTANCE.release();
+            
             // 清理资源
             cleanup();
             
