@@ -218,7 +218,7 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
             groupView.hangUp.setOnClickListener(v -> {
                 GroupCallLogger.logCriticalFlow("挂断操作", "群组通话", "用户点击挂断按钮");
                 // ✅ 使用统一的挂断接口，显式传递signalingInfo参数
-                callingVM.renewalDB(CallingVM.buildPrimaryKey(signalingInfo), (realm, callHistory) -> 
+                callingVM.renewalDB(callingVM.buildPrimaryKey(signalingInfo), (realm, callHistory) -> 
                     callHistory.setDuration((int) (System.currentTimeMillis() - callHistory.getDate()))
                 );
                 callingVM.hangup(signalingInfo);

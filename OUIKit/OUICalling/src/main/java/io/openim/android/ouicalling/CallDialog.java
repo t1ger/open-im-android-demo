@@ -1008,7 +1008,7 @@ public class CallDialog extends BaseDialog {
             public void onSuccess(Object data) {
                 changeView();
 
-                callingVM.renewalDB(CallingVM.buildPrimaryKey(signalingInfo),
+                callingVM.renewalDB(callingVM.buildPrimaryKey(signalingInfo),
                     (realm, v1) -> v1.setSuccess(true));
             }
         });

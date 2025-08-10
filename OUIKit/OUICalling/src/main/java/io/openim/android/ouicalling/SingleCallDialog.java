@@ -181,7 +181,7 @@ public class SingleCallDialog extends BaseCallDialog {
             @Override
             public void click(View v) {
                 // ✅ 修复：按照main分支的方式直接传递signalingInfo参数
-                callingVM.renewalDB(CallingVM.buildPrimaryKey(signalingInfo), (realm, callHistory) -> 
+                callingVM.renewalDB(callingVM.buildPrimaryKey(signalingInfo), (realm, callHistory) -> 
                     callHistory.setDuration((int) (System.currentTimeMillis() - callHistory.getDate()))
                 );
                 callingVM.signalingHungUp(signalingInfo);
