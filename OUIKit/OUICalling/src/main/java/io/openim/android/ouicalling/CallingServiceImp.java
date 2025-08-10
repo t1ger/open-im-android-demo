@@ -161,7 +161,20 @@ public class CallingServiceImp implements CallingService {
 
                 NotificationUtil.sendNotify(A_NOTIFY_ID, notification);
             } else {
-                buildCallDialog(getContext(), null, false).show();
+                // 微信模式：安全创建和显示对话框
+                try {
+                    BaseCallDialog dialog = buildCallDialog(getContext(), null, false);
+                    if (dialog != null) {
+                        dialog.show();
+                        android.util.Log.d("GroupCallFlow", "✅ [CallingService] 对话框显示成功");
+                    } else {
+                        android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框为null，无法显示");
+                        // TODO: 显示系统通知或Toast提示
+                    }
+                } catch (Exception showException) {
+                    android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框显示异常", showException);
+                    // TODO: 显示系统通知或Toast提示
+                }
             }
         }
     }
@@ -260,18 +273,17 @@ public class CallingServiceImp implements CallingService {
             insertCallHistoryRecord();
             
         } catch (Exception e) {
+            // 📱 微信模式：优雅处理异常，显示用户友好的错误提示
+            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框创建异常: " + e.getMessage(), e);
             LogExceptionHandler.handleException(TAG, "创建通话对话框失败", 
                 LogExceptionHandler.ExceptionType.UI_ERROR, e);
             
-            // 异常降级：创建基础对话框
-            try {
-                callDialog = CallDialogFactory.create(context, this, signalingInfo, isCallOut);
-                L.w(TAG, "异常后降级创建对话框成功");
-            } catch (Exception fallbackException) {
-                LogExceptionHandler.handleException(TAG, "降级创建对话框也失败", 
-                    LogExceptionHandler.ExceptionType.CRITICAL_ERROR, fallbackException);
-                return null;
-            }
+            // CallDialogFactory已经处理了异常降级逻辑，这里不应该再次抛出异常
+            // 如果到这里，说明错误对话框也创建失败，系统有严重问题
+            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 系统严重错误，无法创建任何对话框");
+            
+            // 最终后备：返回null，让上层处理
+            return null;
         }
         
         return callDialog;
