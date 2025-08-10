@@ -101,6 +101,8 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
     
     @Override
     protected void bindSpecificData(SignalingInfo signalingInfo) {
+        // 📱 强制日志：确保这个方法被执行
+        android.util.Log.e("GroupCallFlow", "📱📱📱 [GroupCallDialog] bindSpecificData 开始执行!!!");
         GroupCallLogger.logCriticalFlow("数据绑定", "群组通话", "开始绑定信令数据");
         GroupCallLogger.logSignaling("DATA_BINDING", "绑定群组通话数据", GroupCallLogger.formatSignalingData(signalingInfo));
         

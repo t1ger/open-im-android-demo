@@ -72,19 +72,22 @@
 
             </LinearLayout>
 
+            <!-- 九宫格容器 - 群组通话时显示 -->
             <androidx.recyclerview.widget.RecyclerView
                 android:id="@+id/viewRenderers"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_below="@id/zoomOut" />
+                android:layout_below="@id/zoomOut"
+                android:visibility="gone" />
 
+            <!-- 单人通话界面 - 与九宫格互斥显示 -->
             <LinearLayout
                 android:id="@+id/headTips"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_below="@id/zoomOut"
                 android:orientation="vertical"
-                android:visibility="visible">
+                android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="wrap_content"

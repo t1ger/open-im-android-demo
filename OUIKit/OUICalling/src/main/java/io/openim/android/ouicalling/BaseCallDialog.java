@@ -107,7 +107,13 @@ public abstract class BaseCallDialog extends BaseDialog {
             
             // 子类处理具体的数据绑定
             android.util.Log.d("GroupCallFlow", "🎯 [BaseCallDialog] 调用子类bindSpecificData - " + this.getClass().getSimpleName());
-            bindSpecificData(signalingInfo);
+            try {
+                bindSpecificData(signalingInfo);
+                android.util.Log.d("GroupCallFlow", "✅ [BaseCallDialog] 子类bindSpecificData执行成功 - " + this.getClass().getSimpleName());
+            } catch (Exception bindException) {
+                android.util.Log.e("GroupCallFlow", "❌ [BaseCallDialog] 子类bindSpecificData异常 - " + this.getClass().getSimpleName(), bindException);
+                throw bindException; // 重新抛出异常
+            }
             
             // 发起信令通话（如果是呼出）
             if (callingVM.isCallOut) {
