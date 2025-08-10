@@ -165,6 +165,27 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
     }
     
     /**
+     * Java友好的连接房间方法（适用于群组通话）
+     * @param url 房间URL
+     * @param token 访问令牌
+     * @param callback 连接结果回调
+     */
+    fun connectToRoomForGroup(url: String, token: String, callback: (Result<Boolean>) -> Unit) {
+        this.url = url
+        this.token = token
+        
+        viewModelScope.launch {
+            try {
+                roomManager.connectToRoom(url, token)
+                deviceManager.syncDeviceStates()
+                callback(Result.success(true))
+            } catch (e: Throwable) {
+                callback(Result.failure(e))
+            }
+        }
+    }
+    
+    /**
      * 断开连接
      */
     fun disconnect() = roomManager.disconnect()
@@ -583,6 +604,43 @@ class CallViewModel(application: Application) : AndroidViewModel(application) {
             Timber.d { "[CallViewModel] Performance monitoring stopped" }
         } catch (e: Exception) {
             Timber.e(e) { "[CallViewModel] Failed to stop performance monitoring" }
+        }
+    }
+    
+    // ===== 群组状态查询接口 =====
+    
+    /**
+     * 检查参与者是否已连接
+     * 通过GroupCallManager查询，不直接访问LiveKit
+     * ✅ 修复: 提供给CallingVM使用的抽象接口
+     */
+    fun isParticipantConnected(userId: String): Boolean {
+        return try {
+            groupManager.groupMembers.value.containsKey(userId)
+        } catch (e: Exception) {
+            Timber.w(e) { "[CallViewModel] Failed to check participant connection: $userId" }
+            false
+        }
+    }
+    
+    /**
+     * 通过信令更新成员状态
+     * 提供给CallingVM调用的状态同步接口
+     */
+    fun updateMemberStateFromSignaling(userId: String, isConnected: Boolean, micEnabled: Boolean, cameraEnabled: Boolean) {
+        try {
+            Timber.d { "[CallViewModel] Updating member state from signaling: $userId, connected=$isConnected, mic=$micEnabled, camera=$cameraEnabled" }
+            
+            // 更新连接状态
+            groupManager.updateMemberStateFromSignaling(userId, isConnected)
+            
+            // 更新媒体状态
+            if (isConnected) {
+                groupManager.updateTrackStateFromSignaling(userId, "audio", micEnabled)
+                groupManager.updateTrackStateFromSignaling(userId, "video", cameraEnabled)
+            }
+        } catch (e: Exception) {
+            Timber.e(e) { "[CallViewModel] Failed to update member state from signaling: $userId" }
         }
     }
     

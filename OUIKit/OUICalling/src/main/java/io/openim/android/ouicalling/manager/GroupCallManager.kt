@@ -53,6 +53,11 @@ class GroupCallManager(
     // 房间事件监听Job
     private var roomEventJob: Job? = null
     
+    // ✅ 状态缓存 - 通过信令更新，避免直接访问LiveKit轨道
+    private val audioStateCache = mutableMapOf<String, Boolean>()
+    private val videoStateCache = mutableMapOf<String, Boolean>()
+    private val connectionStateCache = mutableMapOf<String, Boolean>()
+    
     /**
      * 连接到群组房间
      * @param url LiveKit服务器URL
@@ -124,6 +129,9 @@ class GroupCallManager(
                     currentMembers[userId] = participant
                     _groupMembers.value = currentMembers
                     
+                    // ✅ 更新连接状态缓存
+                    connectionStateCache[userId] = true
+                    
                     // 发送事件通知
                     coroutineScope.launch {
                         _groupParticipantChanges.emit(
@@ -135,6 +143,9 @@ class GroupCallManager(
                 // 成员离开
                 val participant = currentMembers.remove(userId)
                 _groupMembers.value = currentMembers
+                
+                // ✅ 更新连接状态缓存
+                connectionStateCache[userId] = false
                 
                 if (participant is RemoteParticipant) {
                     coroutineScope.launch {
@@ -163,6 +174,12 @@ class GroupCallManager(
             "audio" -> SignalingTrackChange.TrackEnabled(userId, "audio", isEnabled)
             "video" -> SignalingTrackChange.TrackEnabled(userId, "video", isEnabled)
             else -> null
+        }
+        
+        // ✅ 更新状态缓存
+        when (mediaType.lowercase()) {
+            "audio" -> audioStateCache[userId] = isEnabled
+            "video" -> videoStateCache[userId] = isEnabled
         }
         
         // 如果有有效的信令事件，发送轨道状态变化通知
@@ -208,18 +225,18 @@ class GroupCallManager(
     
     /**
      * 检查参与者的摄像头是否开启
+     * ✅ 修复: 使用缓存机制，遵循信令驱动原则
      */
     fun isParticipantCameraEnabled(participantId: String): Boolean {
-        val participant = getParticipantById(participantId) ?: return false
-        return participant.isCameraEnabled()
+        return getParticipantVideoState(participantId)
     }
     
     /**
      * 检查参与者的麦克风是否开启
+     * ✅ 修复: 使用缓存机制，遵循信令驱动原则
      */
     fun isParticipantMicrophoneEnabled(participantId: String): Boolean {
-        val participant = getParticipantById(participantId) ?: return false
-        return participant.isMicrophoneEnabled()
+        return getParticipantAudioState(participantId)
     }
     
     /**
@@ -252,7 +269,90 @@ class GroupCallManager(
         expectedMemberIds = emptyList()
         roomEventJob?.cancel()
         roomEventJob = null
+        
+        // ✅ 清空状态缓存
+        audioStateCache.clear()
+        videoStateCache.clear()
+        connectionStateCache.clear()
+        
         Timber.d { "[GroupCallManager] 群组通话状态已重置" }
+    }
+    
+    // ===== 状态查询接口（信令驱动） =====
+    
+    /**
+     * 获取参与者音频状态
+     * 通过缓存状态查询，避免直接访问轨道
+     * ✅ 修复: 提供给CallViewModel的抽象接口
+     */
+    fun getParticipantAudioState(userId: String): Boolean {
+        // 优先从缓存获取状态
+        audioStateCache[userId]?.let { return it }
+        
+        // 如果缓存中没有，尝试从参与者获取（作为备选）
+        return try {
+            val participant = getParticipantById(userId)
+            val audioEnabled = participant?.isMicrophoneEnabled() ?: false
+            // 更新缓存
+            audioStateCache[userId] = audioEnabled
+            audioEnabled
+        } catch (e: Exception) {
+            Timber.w(e) { "[GroupCallManager] Failed to get participant audio state: $userId" }
+            false
+        }
+    }
+    
+    /**
+     * 获取参与者视频状态
+     * 通过缓存状态查询，避免直接访问轨道
+     * ✅ 修复: 提供给CallViewModel的抽象接口
+     */
+    fun getParticipantVideoState(userId: String): Boolean {
+        // 优先从缓存获取状态
+        videoStateCache[userId]?.let { return it }
+        
+        // 如果缓存中没有，尝试从参与者获取（作为备选）
+        return try {
+            val participant = getParticipantById(userId)
+            val videoEnabled = participant?.isCameraEnabled() ?: false
+            // 更新缓存
+            videoStateCache[userId] = videoEnabled
+            videoEnabled
+        } catch (e: Exception) {
+            Timber.w(e) { "[GroupCallManager] Failed to get participant video state: $userId" }
+            false
+        }
+    }
+    
+    /**
+     * 清空所有参与者状态缓存
+     * ✅ 新增: 用于通话结束时清理状态缓存
+     */
+    fun clearParticipantStates() {
+        try {
+            audioStateCache.clear()
+            videoStateCache.clear()
+            connectionStateCache.clear()
+            
+            Timber.d { "[GroupCallManager] 参与者状态缓存已清空" }
+        } catch (e: Exception) {
+            Timber.w(e) { "[GroupCallManager] 清空参与者状态缓存失败" }
+        }
+    }
+    
+    /**
+     * 获取参与者连接状态
+     * 通过缓存状态查询，避免直接访问房间状态
+     * ✅ 修复: 提供给CallViewModel的抽象接口
+     */
+    fun getParticipantConnectionState(userId: String): Boolean {
+        // 优先从缓存获取状态
+        connectionStateCache[userId]?.let { return it }
+        
+        // 如果缓存中没有，检查参与者是否在groupMembers中
+        val isConnected = _groupMembers.value.containsKey(userId)
+        connectionStateCache[userId] = isConnected
+        return isConnected
     }
     
     /**
