@@ -106,17 +106,44 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
         GroupCallLogger.logCriticalFlow("数据绑定", "群组通话", "开始绑定信令数据");
         GroupCallLogger.logSignaling("DATA_BINDING", "绑定群组通话数据", GroupCallLogger.formatSignalingData(signalingInfo));
         
-        // 设置视频通话标识
-        callingVM.setVideoCalls(Constants.MediaType.VIDEO.equals(signalingInfo.getInvitation().getMediaType()));
-        
-        // 配置视频相关控件
-        setupVideoControls();
-        
-        // 设置控件默认状态
-        setupDefaultControlStates();
-        
-        // 根据呼叫方向设置UI状态
-        setupCallDirectionUI();
+        try {
+            // 检查callingVM状态
+            android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] callingVM是否为null: " + (callingVM == null));
+            if (callingVM != null) {
+                android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] 信令媒体类型: " + signalingInfo.getInvitation().getMediaType());
+            }
+            
+            // 设置视频通话标识
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备设置视频通话标识");
+            callingVM.setVideoCalls(Constants.MediaType.VIDEO.equals(signalingInfo.getInvitation().getMediaType()));
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 视频通话标识设置完成: " + callingVM.isVideoCalls);
+            
+            // 检查groupView状态
+            android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] groupView是否为null: " + (groupView == null));
+            if (groupView != null) {
+                android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] headTips是否为null: " + (groupView.headTips == null));
+                android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] viewRenderers是否为null: " + (groupView.viewRenderers == null));
+            }
+            
+            // 配置视频相关控件
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备执行setupVideoControls");
+            setupVideoControls();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] setupVideoControls执行完成");
+            
+            // 设置控件默认状态
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备执行setupDefaultControlStates");
+            setupDefaultControlStates();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] setupDefaultControlStates执行完成");
+            
+            // 根据呼叫方向设置UI状态
+            android.util.Log.e("GroupCallFlow", "🔧 [DEBUG] 准备执行setupCallDirectionUI");
+            setupCallDirectionUI();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] setupCallDirectionUI执行完成");
+            
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] bindSpecificData异常: " + e.getMessage(), e);
+            throw e;
+        }
         
         GroupCallLogger.logCriticalFlow("数据绑定", "完成", "群组通话数据绑定成功");
     }
@@ -125,36 +152,65 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
      * 配置视频相关控件
      */
     private void setupVideoControls() {
-        // 🔧 关键修复：群组通话永远隐藏headTips，显示九宫格
-        if (groupView.headTips != null) {
-            groupView.headTips.setVisibility(View.GONE);
-            GroupCallLogger.logUIOperation("隐藏单人通话界面", "群组通话不显示headTips");
-        }
+        android.util.Log.e("GroupCallFlow", "🔧🔧🔧 [setupVideoControls] 开始执行 setupVideoControls");
         
-        // 🔧 关键修复：确保九宫格RecyclerView可见
-        if (groupView.viewRenderers != null) {
-            groupView.viewRenderers.setVisibility(View.VISIBLE);
-            GroupCallLogger.logUIOperation("显示九宫格界面", "viewRenderers设为可见");
-        }
-        
-        // 视频/音频通话的摄像头控制
-        if (groupView.cameraControl != null) {
-            groupView.cameraControl.setVisibility(callingVM.isVideoCalls ? View.VISIBLE : View.GONE);
-        }
-        
-        if (!callingVM.isVideoCalls) {
-            // 音频通话配置
-            callingVM.callViewModel.setCameraEnabled(false);
-            if (groupView.localSpeakerVideoView != null) {
-                groupView.localSpeakerVideoView.setVisibility(View.GONE);
+        try {
+            // 🔧 关键修复：群组通话永远隐藏headTips，显示九宫格
+            android.util.Log.e("GroupCallFlow", "🔍 [setupVideoControls] 检查headTips: " + (groupView.headTips != null));
+            if (groupView.headTips != null) {
+                android.util.Log.e("GroupCallFlow", "🙈 [setupVideoControls] headTips当前可见性: " + groupView.headTips.getVisibility());
+                groupView.headTips.setVisibility(View.GONE);
+                android.util.Log.e("GroupCallFlow", "✅ [setupVideoControls] headTips已设置为GONE");
+                GroupCallLogger.logUIOperation("隐藏单人通话界面", "群组通话不显示headTips");
+            } else {
+                android.util.Log.e("GroupCallFlow", "❌ [setupVideoControls] headTips为null!");
             }
-            if (groupView.timeTv != null) {
-                groupView.timeTv.setVisibility(View.GONE);
+            
+            // 🔧 关键修复：确保九宫格RecyclerView可见
+            android.util.Log.e("GroupCallFlow", "🔍 [setupVideoControls] 检查viewRenderers: " + (groupView.viewRenderers != null));
+            if (groupView.viewRenderers != null) {
+                android.util.Log.e("GroupCallFlow", "🔲 [setupVideoControls] viewRenderers当前可见性: " + groupView.viewRenderers.getVisibility());
+                groupView.viewRenderers.setVisibility(View.VISIBLE);
+                android.util.Log.e("GroupCallFlow", "✅ [setupVideoControls] viewRenderers已设置为VISIBLE");
+                GroupCallLogger.logUIOperation("显示九宫格界面", "viewRenderers设为可见");
+            } else {
+                android.util.Log.e("GroupCallFlow", "❌ [setupVideoControls] viewRenderers为null!");
             }
+            
+            // 视频/音频通话的摄像头控制
+            android.util.Log.e("GroupCallFlow", "🔍 [setupVideoControls] 检查cameraControl: " + (groupView.cameraControl != null));
+            if (groupView.cameraControl != null) {
+                groupView.cameraControl.setVisibility(callingVM.isVideoCalls ? View.VISIBLE : View.GONE);
+                android.util.Log.e("GroupCallFlow", "📹 [setupVideoControls] cameraControl可见性: " + (callingVM.isVideoCalls ? "VISIBLE" : "GONE"));
+            }
+            
+            android.util.Log.e("GroupCallFlow", "🔍 [setupVideoControls] 是否为视频通话: " + callingVM.isVideoCalls);
+            if (!callingVM.isVideoCalls) {
+                android.util.Log.e("GroupCallFlow", "🎤 [setupVideoControls] 音频通话配置开始");
+                // 音频通话配置
+                callingVM.callViewModel.setCameraEnabled(false);
+                android.util.Log.e("GroupCallFlow", "✅ [setupVideoControls] 摄像头已禁用");
+                
+                if (groupView.localSpeakerVideoView != null) {
+                    groupView.localSpeakerVideoView.setVisibility(View.GONE);
+                    android.util.Log.e("GroupCallFlow", "✅ [setupVideoControls] localSpeakerVideoView已隐藏");
+                }
+                if (groupView.timeTv != null) {
+                    groupView.timeTv.setVisibility(View.GONE);
+                    android.util.Log.e("GroupCallFlow", "✅ [setupVideoControls] timeTv己隐藏");
+                }
+            } else {
+                android.util.Log.e("GroupCallFlow", "📹 [setupVideoControls] 视频通话配置");
+            }
+            
+            android.util.Log.e("GroupCallFlow", "✅✅✅ [setupVideoControls] setupVideoControls执行完成!!!");
+            GroupCallLogger.logCriticalFlow("UI配置", "群组通话界面", 
+                "九宫格: VISIBLE, headTips: GONE, 视频: " + callingVM.isVideoCalls);
+                
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] setupVideoControls异常: " + e.getMessage(), e);
+            throw e;
         }
-        
-        GroupCallLogger.logCriticalFlow("UI配置", "群组通话界面", 
-            "九宫格: VISIBLE, headTips: GONE, 视频: " + callingVM.isVideoCalls);
     }
     
     /**
