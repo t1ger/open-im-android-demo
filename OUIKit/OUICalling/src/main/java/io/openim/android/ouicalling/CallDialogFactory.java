@@ -37,6 +37,10 @@ public class CallDialogFactory {
                                       boolean isCallOut,
                                       @Nullable DialogInterface.OnDismissListener dismissListener) {
         
+        // 🆘 强制验证：确保运行最新代码版本 - 2024-08-10 22:15
+        android.util.Log.e("VERSION_CHECK", "🆘🆘🆘 CallDialogFactory 最新版本已加载 - 2024-08-10 22:15 🆘🆘🆘");
+        android.util.Log.e("VERSION_CHECK", "🔍 即将执行根因调试逻辑...");
+        
         try {
             // 🔍 根本原因调试：记录进入Factory时的原始信令状态
             android.util.Log.d("RootCauseDebug", "=== CallDialogFactory创建开始 ===");
