@@ -89,7 +89,9 @@ public abstract class BaseCallDialog extends BaseDialog {
         
         window.setBackgroundDrawableResource(android.R.color.transparent);
         window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
-        window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
+        // 🔧 修复：移除FLAG_NOT_FOCUSABLE以确保对话框可见和可交互
+        // window.addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE); // 原因：这个标志导致对话框不可见
+        android.util.Log.d("GroupCallFlow", "🔧 [BaseCallDialog] 移除FLAG_NOT_FOCUSABLE修复对话框显示问题");
     }
     
     /**
