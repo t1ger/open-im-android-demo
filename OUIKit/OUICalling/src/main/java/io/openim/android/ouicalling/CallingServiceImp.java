@@ -51,6 +51,22 @@ public class CallingServiceImp implements CallingService {
     private SignalingInfo signalingInfo;
     public static final int A_NOTIFY_ID = 100;
     public boolean isBeCalled = false;
+    
+    // 🎯 预初始化数据结构 - 支持业界最佳实践
+    private PreInitializedGroupData preInitializedGroupData;
+    
+    // 预初始化数据类
+    private static class PreInitializedGroupData {
+        final String groupId;
+        final List<String> memberIds;
+        final int memberCount;
+        
+        PreInitializedGroupData(String groupId, List<String> memberIds, int memberCount) {
+            this.groupId = groupId;
+            this.memberIds = new ArrayList<>(memberIds); // 防止外部修改
+            this.memberCount = memberCount;
+        }
+    }
 
 
     public void setSignalingInfo(SignalingInfo signalingInfo) {
@@ -544,8 +560,44 @@ public class CallingServiceImp implements CallingService {
         android.util.Log.d("GroupCallFlow", "🔍 [CallingService] 信令类型识别: " + callTypeDesc);
         
         try {
-            // 创建对应类型的通话对话框
-            android.util.Log.d("GroupCallFlow", "🔧 [CallingService] 开始创建通话对话框");
+            // 🎯 业界最佳实践：预初始化模式 - 在创建UI前先准备数据
+            android.util.Log.d("GroupCallFlow", "🚀 [PreInit] 预初始化模式开始 - 业界最佳实践");
+            
+            // 检查是否为群组通话，如果是先初始化数据
+            if (signalingInfo.getInvitation() != null && 
+                signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT) {
+                
+                android.util.Log.d("GroupCallFlow", "🔧 [PreInit] 检测到群组通话，先初始化数据");
+                
+                // 提取群组通话信息
+                String groupId = signalingInfo.getInvitation().getGroupID();
+                List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
+                
+                android.util.Log.d("GroupCallFlow", "📋 [PreInit] 群组信息: groupId=" + groupId + ", memberCount=" + (memberIds != null ? memberIds.size() : 0));
+                
+                // 验证数据完整性
+                if (groupId == null || memberIds == null || memberIds.isEmpty()) {
+                    android.util.Log.e("GroupCallFlow", "❌ [PreInit] 群组通话信息不完整: groupId=" + groupId + ", memberIds=" + memberIds);
+                    return; // 数据不完整，直接返回
+                }
+                
+                // 🔥 关键改进：在创建Dialog前就初始化成员数据
+                // 预验证数据有效性 - 预期成员数量：发起者 + 被邀请者
+                int expectedMemberCount = memberIds.size() + 1; // +1 为发起者自己
+                
+                android.util.Log.d("GroupCallFlow", "✅ [PreInit] 预期成员数量: " + expectedMemberCount + " 个成员 (发起者+" + memberIds.size() + "被邀请者)");
+                
+                if (expectedMemberCount < 2) {
+                    android.util.Log.e("GroupCallFlow", "❌ [PreInit] 预期成员数不足，终止创建: " + expectedMemberCount);
+                    return;
+                }
+                
+                // 保存预验证数据供后续传递给Dialog
+                preInitializedGroupData = new PreInitializedGroupData(groupId, memberIds, expectedMemberCount);
+            }
+            
+            // 现在创建Dialog，此时群组数据已经准备好了
+            android.util.Log.d("GroupCallFlow", "🔧 [CallingService] 开始创建通话对话框 - 数据已就绪");
             buildCallDialog(getContext(), null, true);
             
             if (callDialog == null) {
@@ -556,48 +608,15 @@ public class CallingServiceImp implements CallingService {
             
             android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框创建成功: " + callDialog.getClass().getSimpleName());
             
-            // 🔥 修复核心问题：如果是群组通话，需要初始化CallingVM的群组成员列表
-            if (signalingInfo.getInvitation() != null && 
-                signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT) {
+            // 🎯 传递预初始化数据给GroupCallDialog
+            if (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog && preInitializedGroupData != null) {
+                android.util.Log.d("GroupCallFlow", "🔄 [CallingService] 传递预初始化数据给GroupCallDialog");
                 
-                android.util.Log.d("GroupCallFlow", "🔧 [CallingService] 检测到群组通话，开始初始化群组成员");
+                // 确保数据同步
+                callDialog.getCallingVM().initializeGroupMembers(preInitializedGroupData.memberIds, preInitializedGroupData.groupId);
                 
-                try {
-                    // 提取群组通话信息
-                    String groupId = signalingInfo.getInvitation().getGroupID();
-                    List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
-                    // 判断是否为视频通话（根据实际SDK的字段调整）
-                    boolean isVideo = false; // 暂时设为false，需要根据实际情况调整
-                    
-                    android.util.Log.d("GroupCallFlow", "📋 [CallingService] 群组信息: groupId=" + groupId + ", memberCount=" + (memberIds != null ? memberIds.size() : 0) + ", isVideo=" + isVideo);
-                    
-                    // 验证数据完整性
-                    if (groupId != null && memberIds != null && !memberIds.isEmpty()) {
-                        // 🚀 关键修复：调用CallingVM.initiateGroupCall()来初始化群组成员列表
-                        // 注意：这里不会重复发送信令，因为信令已经通过ChatVM发送了
-                        // 我们只需要初始化CallingVM内部的群组成员状态
-                        callDialog.getCallingVM().initializeGroupMembers(memberIds, groupId);
-                        
-                        android.util.Log.d("GroupCallFlow", "✅ [CallingService] 群组成员初始化完成: " + callDialog.getCallingVM().getGroupMembers().size() + " 个成员");
-                        
-                        // 🎯 修复时机问题：初始化完成后主动通知GroupCallDialog刷新成员列表
-                        if (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog) {
-                            Common.UIHandler.post(() -> {
-                                try {
-                                    ((io.openim.android.ouicalling.GroupCallDialog) callDialog).refreshMemberList();
-                                    android.util.Log.d("GroupCallFlow", "🔄 [CallingService] 已通知GroupCallDialog刷新成员列表");
-                                } catch (Exception e) {
-                                    android.util.Log.e("GroupCallFlow", "❌ [CallingService] 通知刷新失败: " + e.getMessage(), e);
-                                }
-                            });
-                        }
-                    } else {
-                        android.util.Log.e("GroupCallFlow", "❌ [CallingService] 群组通话信息不完整: groupId=" + groupId + ", memberIds=" + memberIds);
-                    }
-                } catch (Exception e) {
-                    android.util.Log.e("GroupCallFlow", "❌ [CallingService] 初始化群组成员失败: " + e.getMessage(), e);
-                    LogExceptionHandler.handleException(TAG, "初始化群组成员失败", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
-                }
+                int finalMemberCount = callDialog.getCallingVM().getGroupMembers().size();
+                android.util.Log.d("GroupCallFlow", "✅ [CallingService] Dialog成员数据同步完成: " + finalMemberCount + " 个成员");
             }
             
             // 在UI线程显示对话框
@@ -605,7 +624,15 @@ public class CallingServiceImp implements CallingService {
                 try {
                     callDialog.show();
                     L.businessFlow(TAG, "通话对话框显示", "成功");
-                    android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框显示成功");
+                    
+                    String memberInfo = "";
+                    if (callDialog.getCallingVM().isGroupCall()) {
+                        memberInfo = " - 成员数据已就绪: " + callDialog.getCallingVM().getGroupMembers().size() + " 个成员";
+                    } else {
+                        memberInfo = " - 单人通话";
+                    }
+                    
+                    android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框显示成功" + memberInfo);
                 } catch (Exception e) {
                     LogExceptionHandler.handleException(TAG, "显示通话对话框失败", 
                         LogExceptionHandler.ExceptionType.UI_ERROR, e);
@@ -613,8 +640,12 @@ public class CallingServiceImp implements CallingService {
             });
             
         } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 处理通话请求失败: " + e.getMessage(), e);
             LogExceptionHandler.handleException(TAG, "处理通话请求失败", 
                 LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        } finally {
+            // 清理预初始化数据
+            preInitializedGroupData = null;
         }
     }
 
