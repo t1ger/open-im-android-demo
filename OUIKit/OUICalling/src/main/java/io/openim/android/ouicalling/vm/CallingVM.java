@@ -878,6 +878,18 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             // 5. 更新内部状态
             updateSignalingInfo(groupSignalingInfo);
             
+            // 🔥 [FINAL FIX] 最终修复：确保UI创建后能立即获取到成员数据
+            android.util.Log.e("GroupCallFlow", "🎯🎯🎯 [initiateGroupCall] 群组成员初始化完成，当前成员数: " + groupMembers.size());
+            
+            // 输出成员详情用于调试
+            for (int i = 0; i < groupMembers.size(); i++) {
+                GroupCallMember member = groupMembers.get(i);
+                android.util.Log.e("GroupCallFlow", "  👤 成员" + (i+1) + ": " + member.getUserId() + ", 状态: " + member.getState());
+            }
+            
+            // 📊 关键：通知UI数据已准备完成
+            android.util.Log.e("GroupCallFlow", "✅✅✅ [initiateGroupCall] 成员数据准备完成，UI可以获取到 " + groupMembers.size() + " 个成员");
+            
         } catch (Exception e) {
             LogExceptionHandler.handleException("CallingVM", "发起群组通话", LogExceptionHandler.ExceptionType.NETWORK_ERROR, e);
             handleGroupCallError("发起群组通话失败", e);

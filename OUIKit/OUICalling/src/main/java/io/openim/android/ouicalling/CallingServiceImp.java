@@ -617,6 +617,38 @@ public class CallingServiceImp implements CallingService {
                 
                 int finalMemberCount = callDialog.getCallingVM().getGroupMembers().size();
                 android.util.Log.d("GroupCallFlow", "✅ [CallingService] Dialog成员数据同步完成: " + finalMemberCount + " 个成员");
+                
+                // 🔥 [FINAL-UI-SYNC] 最终UI同步机制：确保数据完全就绪后再刷新UI
+                final io.openim.android.ouicalling.GroupCallDialog groupDialog = (io.openim.android.ouicalling.GroupCallDialog) callDialog;
+                
+                // 第1次刷新：立即刷新
+                Common.UIHandler.post(() -> {
+                    try {
+                        android.util.Log.e("GroupCallFlow", "🔥🔥 [FINAL-UI-SYNC-1] 立即UI刷新开始");
+                        groupDialog.refreshMemberList();
+                        android.util.Log.e("GroupCallFlow", "✅🔥 [FINAL-UI-SYNC-1] 立即UI刷新完成");
+                    } catch (Exception e) {
+                        android.util.Log.e("GroupCallFlow", "❌ [FINAL-UI-SYNC-1] 立即UI刷新失败: " + e.getMessage(), e);
+                    }
+                });
+                
+                // 第2次刷新：延迟200ms再次刷新（确保万无一失）
+                Common.UIHandler.postDelayed(() -> {
+                    try {
+                        android.util.Log.e("GroupCallFlow", "🔥🔥 [FINAL-UI-SYNC-2] 延迟UI刷新开始 - 200ms后");
+                        int memberCount = callDialog.getCallingVM().getGroupMembers().size();
+                        android.util.Log.e("GroupCallFlow", "📊 [FINAL-UI-SYNC-2] 当前成员数: " + memberCount);
+                        
+                        if (memberCount > 0) {
+                            groupDialog.refreshMemberList();
+                            android.util.Log.e("GroupCallFlow", "✅🔥 [FINAL-UI-SYNC-2] 延迟UI刷新完成 - 应显示 " + memberCount + " 个成员");
+                        } else {
+                            android.util.Log.e("GroupCallFlow", "❌ [FINAL-UI-SYNC-2] 成员数仍为0，需要进一步调试");
+                        }
+                    } catch (Exception e) {
+                        android.util.Log.e("GroupCallFlow", "❌ [FINAL-UI-SYNC-2] 延迟UI刷新失败: " + e.getMessage(), e);
+                    }
+                }, 200);
             }
             
             // 在UI线程显示对话框

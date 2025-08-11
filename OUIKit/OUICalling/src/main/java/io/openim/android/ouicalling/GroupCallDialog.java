@@ -418,19 +418,45 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
      * 🎯 修复：改为public，以便CallingServiceImp在初始化完成后主动调用
      */
     public void refreshMemberList() {
+        android.util.Log.e("GroupCallFlow", "🔄🔄🔄 [refreshMemberList] 开始刷新成员列表");
+        
         if (memberAdapter != null) {
-            android.util.Log.e("GroupCallFlow", "🔄🔄🔄 [refreshMemberList] 开始刷新成员列表");
+            // 🔍 [FINAL DEBUG] 终极调试：多次尝试获取成员数据
+            java.util.List<io.openim.android.ouicalling.entity.GroupCallMember> groupMembers = null;
             
-            // 🔧 关键修复：获取真实的成员数据
-            java.util.List<io.openim.android.ouicalling.entity.GroupCallMember> groupMembers = callingVM.getGroupMembers();
-            int memberCount = groupMembers.size();
+            // 尝试1：直接获取
+            groupMembers = callingVM.getGroupMembers();
+            android.util.Log.e("GroupCallFlow", "📋 [refreshMemberList] 尝试1-直接获取: " + (groupMembers != null ? groupMembers.size() : "null") + " 个成员");
             
-            android.util.Log.e("GroupCallFlow", "👥 [refreshMemberList] 获取到成员数量: " + memberCount);
+            // 如果为空，等待100ms后重试
+            if (groupMembers == null || groupMembers.isEmpty()) {
+                android.util.Log.e("GroupCallFlow", "⏱️ [refreshMemberList] 数据为空，等待100ms后重试");
+                try {
+                    Thread.sleep(100);
+                } catch (InterruptedException e) {
+                    // ignore
+                }
+                
+                // 尝试2：延迟获取
+                groupMembers = callingVM.getGroupMembers();
+                android.util.Log.e("GroupCallFlow", "📋 [refreshMemberList] 尝试2-延迟获取: " + (groupMembers != null ? groupMembers.size() : "null") + " 个成员");
+            }
+            
+            int memberCount = groupMembers != null ? groupMembers.size() : 0;
+            android.util.Log.e("GroupCallFlow", "👥 [refreshMemberList] 最终获取到成员数量: " + memberCount);
+            
+            // 输出成员详情用于调试
+            if (groupMembers != null && !groupMembers.isEmpty()) {
+                for (int i = 0; i < groupMembers.size(); i++) {
+                    android.util.Log.e("GroupCallFlow", "  🧑‍🤝‍🧑 成员" + (i+1) + ": " + groupMembers.get(i).getUserId() + ", 状态: " + groupMembers.get(i).getState());
+                }
+            }
+            
             GroupCallLogger.logDebug("成员刷新", "刷新群组成员列表, 数量: " + memberCount);
             
             // 🔧 关键修复：传递真实数据给适配器
             if (groupMembers != null && !groupMembers.isEmpty()) {
-                android.util.Log.e("GroupCallFlow", "✅ [refreshMemberList] 更新适配器数据");
+                android.util.Log.e("GroupCallFlow", "✅ [refreshMemberList] 更新适配器数据 - " + groupMembers.size() + " 个成员");
                 memberAdapter.updateMembers(groupMembers);
             } else {
                 android.util.Log.e("GroupCallFlow", "❌ [refreshMemberList] 成员列表为空，传递空列表");
@@ -440,7 +466,11 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
             // 根据成员数量调整布局
             adjustGridLayout(memberCount);
             
-            android.util.Log.e("GroupCallFlow", "✅✅✅ [refreshMemberList] 成员列表刷新完成");
+            // 🔥 [FINAL FIX] 强制适配器刷新
+            memberAdapter.notifyDataSetChanged();
+            android.util.Log.e("GroupCallFlow", "🔄 [refreshMemberList] 强制适配器刷新 - notifyDataSetChanged()");
+            
+            android.util.Log.e("GroupCallFlow", "✅✅✅ [refreshMemberList] 成员列表刷新完成 - 应显示 " + memberCount + " 个成员");
         } else {
             android.util.Log.e("GroupCallFlow", "❌ [refreshMemberList] memberAdapter为null");
         }
