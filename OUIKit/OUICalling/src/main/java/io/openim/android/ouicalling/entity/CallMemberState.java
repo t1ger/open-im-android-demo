@@ -10,6 +10,8 @@ public enum CallMemberState {
     RINGING("ringing", "响铃中"),            // 对方响铃
     CONNECTING("connecting", "连接中"),       // 正在连接
     CONNECTED("connected", "已连接"),         // 已连接通话
+    SPEAKING("speaking", "正在发言"),        // 正在发言
+    MUTED("muted", "已静音"),              // 已静音
     DISCONNECTED("disconnected", "已断开"),   // 已断开连接
     REJECTED("rejected", "已拒绝"),          // 拒绝通话
     TIMEOUT("timeout", "超时"),              // 邀请超时
@@ -60,9 +62,20 @@ public enum CallMemberState {
                        target == NETWORK_ERROR;
                        
             case CONNECTED:
-                // 已连接可以转到断开、仅音频、网络异常
+                // 已连接可以转到断开、仅音频、正在发言、已静音、网络异常
                 return target == DISCONNECTED || target == AUDIO_ONLY || 
+                       target == SPEAKING || target == MUTED ||
                        target == NETWORK_ERROR;
+                       
+            case SPEAKING:
+                // 正在发言可以转到已连接、已静音、断开、网络异常
+                return target == CONNECTED || target == MUTED || 
+                       target == DISCONNECTED || target == NETWORK_ERROR;
+                       
+            case MUTED:
+                // 已静音可以转到已连接、正在发言、断开、网络异常
+                return target == CONNECTED || target == SPEAKING || 
+                       target == DISCONNECTED || target == NETWORK_ERROR;
                        
             case AUDIO_ONLY:
                 // 仅音频可以转到已连接、断开、网络异常
@@ -88,7 +101,8 @@ public enum CallMemberState {
      * 判断是否为活跃状态 (正在通话中的状态)
      */
     public boolean isActiveState() {
-        return this == CONNECTED || this == AUDIO_ONLY || this == CONNECTING;
+        return this == CONNECTED || this == AUDIO_ONLY || this == CONNECTING ||
+               this == SPEAKING || this == MUTED;
     }
 
     /**

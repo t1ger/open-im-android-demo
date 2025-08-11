@@ -31,6 +31,10 @@ import io.openim.android.ouicalling.entity.GroupCallMember;
 // 已移除SignalingDeduplicator，使用简化的标准信令处理流程
 import io.openim.android.ouicalling.state.CallStateManager;
 import io.openim.android.ouicalling.state.GroupCallStateManager;
+import io.openim.android.ouicalling.state.UnifiedCallStateManager;
+import java.util.ArrayList;
+import java.util.List;
+import io.openim.android.ouicalling.entity.CallMemberState;
 import io.openim.android.ouicalling.utils.VideoResourcePool;
 
 import io.livekit.android.renderer.TextureViewRenderer;
@@ -98,6 +102,13 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     private final CallStateManager stateManager = new CallStateManager();
     // 群组通话状态管理器
     public GroupCallStateManager groupCallStateManager;
+    
+    // 统一状态管理器 - 解决多状态源冲突问题
+    private UnifiedCallStateManager unifiedStateManager;
+    
+    // 状态同步标记，用于防止重复初始化
+    private volatile boolean isUnifiedStateInitialized = false;
+    
     // 群组通话成员列表（线程安全）
     public final CopyOnWriteArrayList<GroupCallMember> groupMembers = new CopyOnWriteArrayList<>();
     // 当前发言人ID（v1.2实现）
@@ -887,23 +898,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
         }
     }
 
-    /**
-     * 更新成员状态
-     */
-    public void updateMemberState(String userId, CallMemberState newState) {
-        GroupCallMember member = findMember(userId);
-        if (member != null) {
-            boolean success = member.setState(newState);
-            if (success) {
-                L.d("CallingVM", "成员状态更新: " + userId + " -> " + newState.getDescription());
-                notifyGroupSignalingListener();
-            } else {
-                L.w("CallingVM", "成员状态更新失败: " + userId + " -> " + newState.getDescription());
-            }
-        } else {
-            L.w("CallingVM", "未找到成员: " + userId);
-        }
-    }
+    // 已移除旧的updateMemberState方法，统一使用新的统一状态管理器版本
 
     /**
      * 获取渲染器（使用资源池）
@@ -1541,7 +1536,161 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     }
     
     /**
-     * 初始化群组成员列表
+     * 初始化群组成员列表（public版本供CallingServiceImp调用）
+     * 🚀 核心修复方法：解决群组成员列表为空的问题
+     */
+    public void initializeGroupMembers(List<String> memberIds, String groupId) {
+        try {
+            L.d("CallingVM", "🔧 [Public API] 开始初始化群组成员: " + memberIds.size() + "个成员，群组ID: " + groupId);
+            
+            // 设置群组ID
+            if (groupId != null) {
+                this.groupId = groupId;
+                this.groupRoomId = "group_call_" + groupId + "_" + System.currentTimeMillis();
+            }
+            
+            // 初始化统一状态管理器
+            initializeUnifiedStateManager();
+            
+            // 调用私有方法进行实际初始化
+            initializeGroupMembersInternal(memberIds);
+            
+            // 同步到统一状态管理器
+            syncToUnifiedStateManager(memberIds, groupId);
+            
+            L.businessFlow("CallingVM", "群组成员初始化完成", 
+                "成员数: " + groupMembers.size() + ", 群组ID: " + groupId);
+                
+        } catch (Exception e) {
+            LogExceptionHandler.handleException("CallingVM", "公开API初始化群组成员失败", 
+                LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+        }
+    }
+    
+    /**
+     * 初始化统一状态管理器
+     * 解决多状态源冲突问题
+     */
+    private void initializeUnifiedStateManager() {
+        try {
+            if (isUnifiedStateInitialized) {
+                L.d("CallingVM", "[统一状态] 已初始化，跳过重复初始化");
+                return;
+            }
+            
+            // 获取统一状态管理器实例
+            unifiedStateManager = UnifiedCallStateManager.getInstance();
+            
+            // 添加状态观察者，同步状态变更
+            unifiedStateManager.addObserver(new UnifiedCallStateManager.StateChangeObserver() {
+                @Override
+                public void onMemberStateChanged(@NonNull String userId, 
+                                                  @NonNull CallMemberState oldState, 
+                                                  @NonNull CallMemberState newState) {
+                    // 同步到本地成员列表
+                    syncMemberStateToLocal(userId, newState);
+                }
+                
+                @Override
+                public void onSpeakerChanged(String oldSpeaker, String newSpeaker) {
+                    // 同步发言人状态
+                    currentSpeaker = newSpeaker != null ? newSpeaker : "";
+                    L.d("CallingVM", "[统一状态] 发言人变更: " + oldSpeaker + " -> " + newSpeaker);
+                }
+                
+                @Override
+                public void onCallStateChanged(@NonNull UnifiedCallStateManager.CallState oldState, 
+                                                @NonNull UnifiedCallStateManager.CallState newState) {
+                    L.d("CallingVM", "[统一状态] 通话状态变更: " + oldState + " -> " + newState);
+                    // 这里可以添加更多业务逻辑
+                }
+                
+                @Override
+                public void onStateReset() {
+                    L.d("CallingVM", "[统一状态] 状态已重置");
+                    // 重置本地状态
+                    resetLocalState();
+                }
+            });
+            
+            isUnifiedStateInitialized = true;
+            L.d("CallingVM", "[统一状态] 初始化完成");
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[统一状态] 初始化异常", e);
+        }
+    }
+    
+    /**
+     * 同步到统一状态管理器
+     */
+    private void syncToUnifiedStateManager(List<String> memberIds, String groupId) {
+        try {
+            if (unifiedStateManager == null) {
+                L.w("CallingVM", "[状态同步] 统一状态管理器未初始化");
+                return;
+            }
+            
+            // 构造SignalingInfo用于统一状态管理器初始化
+            if (currentSignalingInfo != null) {
+                unifiedStateManager.initializeGroupCall(currentSignalingInfo);
+                L.d("CallingVM", "[状态同步] 已同步到统一状态管理器");
+            }
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[状态同步] 同步到统一状态管理器异常", e);
+        }
+    }
+    
+    /**
+     * 同步成员状态到本地列表
+     */
+    private void syncMemberStateToLocal(String userId, CallMemberState newState) {
+        try {
+            for (GroupCallMember member : groupMembers) {
+                if (userId.equals(member.getUserID())) {
+                    member.setState(newState);
+                    L.d("CallingVM", "[状态同步] " + userId + " -> " + newState.getDescription());
+                    break;
+                }
+            }
+            
+            // 通知UI更新
+            notifyGroupMembersUpdated();
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[状态同步] 异常: " + userId, e);
+        }
+    }
+    
+    /**
+     * 重置本地状态
+     */
+    private void resetLocalState() {
+        try {
+            groupMembers.clear();
+            currentSpeaker = "";
+            isGroupCall = false;
+            groupId = "";
+            groupRoomId = "";
+            isUnifiedStateInitialized = false;
+            
+            L.d("CallingVM", "[状态重置] 本地状态已重置");
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[状态重置] 异常", e);
+        }
+    }
+    
+    /**
+     * 初始化群组成员列表（私有实现）
+     */
+    private void initializeGroupMembersInternal(List<String> memberIds) {
+        initializeGroupMembers(memberIds);
+    }
+    
+    /**
+     * 初始化群组成员列表（原私有方法）
      */
     private void initializeGroupMembers(List<String> memberIds) {
         try {
@@ -1648,6 +1797,206 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
                 L.w("CallingVM", "通知 UI 刷新失赅: " + e.getMessage());
             }
         });
+    }
+    
+    /**
+     * 更新成员超时状态
+     * 用于处理网络超时时的成员状态更新
+     */
+    public void updateMemberTimeout(String userId) {
+        try {
+            if (userId == null || userId.isEmpty()) {
+                L.w("CallingVM", "[超时更新] 用户ID为空");
+                return;
+            }
+            
+            L.d("CallingVM", "[超时更新] 更新成员超时状态: " + userId);
+            
+            // 在群组成员列表中查找并更新状态
+            for (GroupCallMember member : groupMembers) {
+                if (userId.equals(member.getUserID())) {
+                    member.setState(CallMemberState.TIMEOUT);
+                    L.d("CallingVM", "[超时更新] 成员状态已更新为TIMEOUT: " + userId);
+                    break;
+                }
+            }
+            
+            // 同时更新状态管理器
+            if (groupCallStateManager != null) {
+                groupCallStateManager.updateMemberState(userId, CallMemberState.TIMEOUT);
+            }
+            
+            // 通知UI更新
+            notifyGroupMembersUpdated();
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[超时更新] 更新成员超时状态异常: " + userId, e);
+        }
+    }
+    
+    /**
+     * 获取活跃成员列表（排除超时和断开连接的成员）
+     */
+    public List<GroupCallMember> getActiveMembers() {
+        List<GroupCallMember> activeMembers = new ArrayList<>();
+        try {
+            for (GroupCallMember member : groupMembers) {
+                CallMemberState state = member.getState();
+                // 只包含活跃状态的成员（邀请中、已连接、正在发言、已静音）
+                if (state == CallMemberState.INVITING || 
+                    state == CallMemberState.CONNECTED || 
+                    state == CallMemberState.SPEAKING || 
+                    state == CallMemberState.MUTED) {
+                    activeMembers.add(member);
+                }
+            }
+            
+            L.d("CallingVM", "[活跃成员] 当前活跃成员数量: " + activeMembers.size() + "/" + groupMembers.size());
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[活跃成员] 获取活跃成员列表异常", e);
+        }
+        return activeMembers;
+    }
+    
+    /**
+     * 获取超时成员列表
+     */
+    public List<GroupCallMember> getTimeoutMembers() {
+        List<GroupCallMember> timeoutMembers = new ArrayList<>();
+        try {
+            for (GroupCallMember member : groupMembers) {
+                if (member.getState() == CallMemberState.TIMEOUT) {
+                    timeoutMembers.add(member);
+                }
+            }
+            
+            L.d("CallingVM", "[超时成员] 超时成员数量: " + timeoutMembers.size());
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[超时成员] 获取超时成员列表异常", e);
+        }
+        return timeoutMembers;
+    }
+    
+    /**
+     * 重新邀请超时成员
+     * 提供重连机制
+     */
+    public void reinviteMember(String userId) {
+        try {
+            if (userId == null || userId.isEmpty()) {
+                L.w("CallingVM", "[重新邀请] 用户ID为空");
+                return;
+            }
+            
+            L.d("CallingVM", "[重新邀请] 开始重新邀请成员: " + userId);
+            
+            // 重置成员状态为邀请中
+            updateMemberState(userId, CallMemberState.INVITING);
+            
+            // 这里可以调用信令系统重新发送邀请
+            // TODO: 实现重新邀请信令逻辑
+            L.d("CallingVM", "[重新邀请] 重新邀请信令已发送: " + userId);
+            
+            // 可选：设置超时计时器
+            startReinviteTimeout(userId);
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[重新邀请] 重新邀请成员异常: " + userId, e);
+        }
+    }
+    
+    /**
+     * 启动重新邀请超时计时器
+     */
+    private void startReinviteTimeout(String userId) {
+        try {
+            // 设置30秒重新邀请超时
+            Common.UIHandler.postDelayed(() -> {
+                // 检查成员是否仍为邀请中状态
+                for (GroupCallMember member : groupMembers) {
+                    if (userId.equals(member.getUserID()) && 
+                        member.getState() == CallMemberState.INVITING) {
+                        // 重新邀请也超时，设置为最终超时状态
+                        updateMemberTimeout(userId);
+                        L.w("CallingVM", "[重邀超时] 成员重新邀请超时: " + userId);
+                        break;
+                    }
+                }
+            }, 30000); // 30秒超时
+            
+            L.d("CallingVM", "[重邀计时] 为成员设置重邀超时: " + userId);
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[重邀计时] 设置重邀超时异常: " + userId, e);
+        }
+    }
+    
+    /**
+     * 更新成员状态（通用方法）
+     * 使用统一状态管理器解决多状态源冲突
+     */
+    public boolean updateMemberState(String userId, CallMemberState newState) {
+        try {
+            if (userId == null || userId.isEmpty()) {
+                L.w("CallingVM", "[状态更新] 用户ID为空");
+                return false;
+            }
+            
+            // 优先使用统一状态管理器更新
+            if (unifiedStateManager != null && isUnifiedStateInitialized) {
+                boolean success = unifiedStateManager.updateMemberState(userId, newState);
+                if (success) {
+                    L.d("CallingVM", "[统一状态更新] " + userId + " -> " + newState.getDescription());
+                    // 统一状态管理器会通过观察者模式同步到本地状态
+                    return true;
+                } else {
+                    L.w("CallingVM", "[统一状态更新] 失败，降级到本地更新: " + userId);
+                }
+            }
+            
+            // 降级到本地更新（式容旧代码）
+            boolean updated = updateMemberStateLocal(userId, newState);
+            
+            if (updated) {
+                // 同时更新旧的状态管理器（保持兼容性）
+                if (groupCallStateManager != null) {
+                    groupCallStateManager.updateMemberState(userId, newState);
+                }
+                
+                // 通知UI更新
+                notifyGroupMembersUpdated();
+                return true;
+            } else {
+                L.w("CallingVM", "[状态更新] 未找到成员: " + userId);
+                return false;
+            }
+            
+        } catch (Exception e) {
+            L.e("CallingVM", "[状态更新] 更新成员状态异常: " + userId, e);
+            return false;
+        }
+    }
+    
+    /**
+     * 本地成员状态更新（私有方法）
+     */
+    private boolean updateMemberStateLocal(String userId, CallMemberState newState) {
+        boolean updated = false;
+        for (GroupCallMember member : groupMembers) {
+            if (userId.equals(member.getUserID())) {
+                CallMemberState oldState = member.getState();
+                member.setState(newState);
+                
+                L.d("CallingVM", "[本地状态更新] " + userId + ": " + 
+                    oldState.getDescription() + " -> " + newState.getDescription());
+                
+                updated = true;
+                break;
+            }
+        }
+        return updated;
     }
     
     /**

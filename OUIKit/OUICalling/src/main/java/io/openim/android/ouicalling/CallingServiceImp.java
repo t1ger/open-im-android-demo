@@ -28,6 +28,10 @@ import io.openim.android.ouicore.utils.BackgroundStartPermissions;
 import io.openim.android.ouicore.utils.Common;
 import io.openim.android.ouicore.utils.HasPermissions;
 import io.openim.android.ouicore.utils.L;
+import io.openim.android.ouicalling.entity.GroupCallMember;
+import java.util.List;
+import io.openim.android.sdk.enums.ConversationType;
+import android.widget.Toast;
 import io.openim.android.ouicore.utils.LogExceptionHandler;
 import io.openim.android.ouicore.utils.MediaPlayerUtil;
 import io.openim.android.sdk.enums.ConversationType;
@@ -78,7 +82,206 @@ public class CallingServiceImp implements CallingService {
 
     @Override
     public void onInvitationTimeout(SignalingInfo s) {
-
+        L.e(TAG, "----onInvitationTimeout-----");
+        handleInvitationTimeout(s);
+    }
+    
+    /**
+     * 处理邀请超时事件
+     * 微信模式：提供重连和用户友好的处理
+     */
+    private void handleInvitationTimeout(SignalingInfo signalingInfo) {
+        try {
+            if (signalingInfo == null) {
+                L.w(TAG, "[超时处理] SignalingInfo为空，无法处理");
+                return;
+            }
+            
+            // 1. 记录超时事件
+            String timeoutUserId = extractUserIdFromTimeout(signalingInfo);
+            L.businessFlow(TAG, "邀请超时", "用户: " + timeoutUserId);
+            
+            // 2. 更新数据库记录
+            if (callDialog != null) {
+                callDialog.getCallingVM().renewalDB(callDialog.buildPrimaryKey(),
+                    (realm, callHistory) -> {
+                        callHistory.setFailedState(3); // 3表示超时
+                        callHistory.setSuccess(false);
+                    });
+            }
+            
+            // 3. 区分群组通话和单人通话处理
+            if (isGroupCall(signalingInfo)) {
+                handleGroupCallTimeout(signalingInfo, timeoutUserId);
+            } else {
+                handleSingleCallTimeout(signalingInfo, timeoutUserId);
+            }
+            
+        } catch (Exception e) {
+            L.e(TAG, "[超时处理] 处理异常", e);
+            // 异常情况下至少要关闭对话框
+            dismissDialogSafely();
+        }
+    }
+    
+    /**
+     * 处理群组通话超时
+     */
+    private void handleGroupCallTimeout(SignalingInfo signalingInfo, String timeoutUserId) {
+        try {
+            if (callDialog != null && callDialog instanceof GroupCallDialog) {
+                GroupCallDialog groupDialog = (GroupCallDialog) callDialog;
+                
+                // 更新超时成员状态
+                groupDialog.getCallingVM().updateMemberTimeout(timeoutUserId);
+                
+                // 检查是否还有其他成员
+                List<GroupCallMember> remainingMembers = groupDialog.getCallingVM().getActiveMembers();
+                
+                if (remainingMembers.isEmpty()) {
+                    // 所有成员都超时，结束通话
+                    L.w(TAG, "[群组超时] 所有成员超时，结束通话");
+                    showTimeoutMessage("通话无人接听，已自动结束");
+                    dismissDialogSafely();
+                } else {
+                    // 还有其他成员，显示部分超时提示
+                    L.d(TAG, "[群组超时] 部分成员超时，继续等待其他成员");
+                    showTimeoutMessage("部分成员未接听，继续等待其他成员");
+                    
+                    // 可选：提供重新邀请超时成员的选项
+                    offerReinviteOption(timeoutUserId);
+                }
+            } else {
+                L.w(TAG, "[群组超时] 对话框不是GroupCallDialog类型，直接结束");
+                dismissDialogSafely();
+            }
+            
+        } catch (Exception e) {
+            L.e(TAG, "[群组超时处理] 异常", e);
+            dismissDialogSafely();
+        }
+    }
+    
+    /**
+     * 处理单人通话超时
+     */
+    private void handleSingleCallTimeout(SignalingInfo signalingInfo, String timeoutUserId) {
+        try {
+            L.d(TAG, "[单人超时] 对方未接听: " + timeoutUserId);
+            
+            // 显示超时消息
+            showTimeoutMessage("对方未接听，通话已结束");
+            
+            // 可选：提供重拨选项
+            offerRedialOption(signalingInfo);
+            
+            // 结束通话
+            dismissDialogSafely();
+            
+        } catch (Exception e) {
+            L.e(TAG, "[单人超时处理] 异常", e);
+            dismissDialogSafely();
+        }
+    }
+    
+    /**
+     * 检查是否为群组通话
+     */
+    private boolean isGroupCall(SignalingInfo signalingInfo) {
+        try {
+            return signalingInfo.getInvitation() != null && 
+                   signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT;
+        } catch (Exception e) {
+            L.e(TAG, "[群组检查] 异常", e);
+            return false;
+        }
+    }
+    
+    /**
+     * 显示超时消息
+     */
+    private void showTimeoutMessage(String message) {
+        try {
+            Context context = getContext();
+            Common.UIHandler.post(() -> {
+                Toast.makeText(context, message, Toast.LENGTH_LONG).show();
+            });
+            L.d(TAG, "[超时提示] " + message);
+        } catch (Exception e) {
+            L.e(TAG, "[超时提示] 显示异常", e);
+        }
+    }
+    
+    /**
+     * 提供重新邀请选项（群组通话）
+     */
+    private void offerReinviteOption(String timeoutUserId) {
+        try {
+            // 这里可以实现重新邀请的UI选项
+            // 例如在GroupCallDialog中添加"重新邀请"按钮
+            L.d(TAG, "[重邀选项] 可重新邀请用户: " + timeoutUserId);
+            
+            // TODO: 实现重新邀请UI和逻辑
+            // callDialog.showReinviteOption(timeoutUserId);
+            
+        } catch (Exception e) {
+            L.e(TAG, "[重邀选项] 异常", e);
+        }
+    }
+    
+    /**
+     * 提供重拨选项（单人通话）
+     */
+    private void offerRedialOption(SignalingInfo signalingInfo) {
+        try {
+            // 这里可以实现重拨的UI选项
+            L.d(TAG, "[重拨选项] 可重拨通话");
+            
+            // TODO: 实现重拨UI和逻辑
+            // showRedialDialog(signalingInfo);
+            
+        } catch (Exception e) {
+            L.e(TAG, "[重拨选项] 异常", e);
+        }
+    }
+    
+    /**
+     * 安全地关闭对话框
+     */
+    private void dismissDialogSafely() {
+        try {
+            Common.UIHandler.post(() -> {
+                if (callDialog != null) {
+                    callDialog.dismiss();
+                    L.d(TAG, "[安全关闭] 对话框已关闭");
+                }
+            });
+        } catch (Exception e) {
+            L.e(TAG, "[安全关闭] 异常", e);
+        }
+    }
+    
+    /**
+     * 从超时信令中提取用户ID
+     */
+    private String extractUserIdFromTimeout(SignalingInfo signalingInfo) {
+        try {
+            if (signalingInfo.getInvitation() != null) {
+                // 优先获取邀请发起者
+                if (signalingInfo.getInvitation().getInviterUserID() != null) {
+                    return signalingInfo.getInvitation().getInviterUserID();
+                }
+                // 如果没有发起者，获取被邀请者列表的第一个
+                if (signalingInfo.getInvitation().getInviteeUserIDList() != null && 
+                    !signalingInfo.getInvitation().getInviteeUserIDList().isEmpty()) {
+                    return signalingInfo.getInvitation().getInviteeUserIDList().get(0);
+                }
+            }
+            return "unknown_user";
+        } catch (Exception e) {
+            L.e(TAG, "[提取用户ID] 异常", e);
+            return "unknown_user";
+        }
     }
 
     @Override
@@ -352,6 +555,38 @@ public class CallingServiceImp implements CallingService {
             }
             
             android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框创建成功: " + callDialog.getClass().getSimpleName());
+            
+            // 🔥 修复核心问题：如果是群组通话，需要初始化CallingVM的群组成员列表
+            if (signalingInfo.getInvitation() != null && 
+                signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT) {
+                
+                android.util.Log.d("GroupCallFlow", "🔧 [CallingService] 检测到群组通话，开始初始化群组成员");
+                
+                try {
+                    // 提取群组通话信息
+                    String groupId = signalingInfo.getInvitation().getGroupID();
+                    List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
+                    // 判断是否为视频通话（根据实际SDK的字段调整）
+                    boolean isVideo = false; // 暂时设为false，需要根据实际情况调整
+                    
+                    android.util.Log.d("GroupCallFlow", "📋 [CallingService] 群组信息: groupId=" + groupId + ", memberCount=" + (memberIds != null ? memberIds.size() : 0) + ", isVideo=" + isVideo);
+                    
+                    // 验证数据完整性
+                    if (groupId != null && memberIds != null && !memberIds.isEmpty()) {
+                        // 🚀 关键修复：调用CallingVM.initiateGroupCall()来初始化群组成员列表
+                        // 注意：这里不会重复发送信令，因为信令已经通过ChatVM发送了
+                        // 我们只需要初始化CallingVM内部的群组成员状态
+                        callDialog.getCallingVM().initializeGroupMembers(memberIds, groupId);
+                        
+                        android.util.Log.d("GroupCallFlow", "✅ [CallingService] 群组成员初始化完成: " + callDialog.getCallingVM().getGroupMembers().size() + " 个成员");
+                    } else {
+                        android.util.Log.e("GroupCallFlow", "❌ [CallingService] 群组通话信息不完整: groupId=" + groupId + ", memberIds=" + memberIds);
+                    }
+                } catch (Exception e) {
+                    android.util.Log.e("GroupCallFlow", "❌ [CallingService] 初始化群组成员失败: " + e.getMessage(), e);
+                    LogExceptionHandler.handleException(TAG, "初始化群组成员失败", LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
+                }
+            }
             
             // 在UI线程显示对话框
             Common.UIHandler.post(() -> {
