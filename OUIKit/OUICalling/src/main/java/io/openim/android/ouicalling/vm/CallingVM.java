@@ -1700,22 +1700,41 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     
     /**
      * 初始化群组成员列表（原私有方法）
+     * 🎯 核心修复：确保发起方自己也包含在九宫格成员列表中
      */
     private void initializeGroupMembers(List<String> memberIds) {
         try {
             groupMembers.clear();
             
-            // 🔧 关键修复：先创建基础成员对象，然后异步获取用户信息
-            for (String memberId : memberIds) {
-                GroupCallMember member = new GroupCallMember(memberId);
-                member.setState(CallMemberState.INVITING); // 初始状态为邀请中
-                groupMembers.add(member);
+            // 🎯 关键修复：先添加发起方自己（已连接状态）
+            String currentUserId = BaseApp.inst().loginCertificate.userID;
+            if (currentUserId != null && !currentUserId.isEmpty()) {
+                GroupCallMember selfMember = new GroupCallMember(currentUserId);
+                selfMember.setState(CallMemberState.CONNECTED); // 发起方默认已连接
+                groupMembers.add(selfMember);
+                L.d("CallingVM", "🎯 [发起方] 添加自己到成员列表: " + currentUserId + " (CONNECTED)");
             }
             
-            L.d("CallingVM", "群组成员初始化完成: " + groupMembers.size() + " 人");
+            // 🔧 然后添加被邀请的成员，避免重复添加自己
+            List<String> allMemberIds = new ArrayList<>();
+            for (String memberId : memberIds) {
+                if (!memberId.equals(currentUserId)) { // 避免重复添加自己
+                    GroupCallMember member = new GroupCallMember(memberId);
+                    member.setState(CallMemberState.INVITING); // 被邀请人初始状态为邀请中
+                    groupMembers.add(member);
+                    allMemberIds.add(memberId);
+                    L.d("CallingVM", "🎯 [被邀请人] 添加到成员列表: " + memberId + " (INVITING)");
+                }
+            }
             
-            // 🔧 关键修复：异步获取所有成员的IM用户信息
-            fetchMembersUserInfo(memberIds);
+            L.d("CallingVM", "🎯 群组成员初始化完成: " + groupMembers.size() + " 人 (包含发起方自己)");
+            
+            // 🔧 关键修复：异步获取所有成员的IM用户信息（包括自己）
+            List<String> allUserIds = new ArrayList<>(allMemberIds);
+            if (currentUserId != null && !currentUserId.isEmpty()) {
+                allUserIds.add(currentUserId); // 也获取自己的用户信息
+            }
+            fetchMembersUserInfo(allUserIds);
             
         } catch (Exception e) {
             L.w("CallingVM", "初始化群组成员失败: " + e.getMessage());
