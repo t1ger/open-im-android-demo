@@ -415,8 +415,9 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
     
     /**
      * 刷新成员列表
+     * 🎯 修复：改为public，以便CallingServiceImp在初始化完成后主动调用
      */
-    private void refreshMemberList() {
+    public void refreshMemberList() {
         if (memberAdapter != null) {
             android.util.Log.e("GroupCallFlow", "🔄🔄🔄 [refreshMemberList] 开始刷新成员列表");
             

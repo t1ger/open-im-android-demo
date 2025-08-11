@@ -843,14 +843,23 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             
             android.util.Log.d(TAG, "发起群组通话 - 群组: " + groupId + ", 成员数: " + memberIds.size());
             
-            // 2. 初始化成员列表
+            // 2. 初始化成员列表（遵循微信群组音视频逻辑：九宫格显示自己+其他参与者）
             groupMembers.clear();
+            String currentUserId = BaseApp.inst().loginCertificate.userID;
+            
+            // 🎯 正确逻辑：先添加自己（发起方）到九宫格
+            GroupCallMember selfMember = new GroupCallMember(currentUserId);
+            selfMember.setState(CallMemberState.CONNECTED); // 发起方默认已连接状态
+            groupMembers.add(selfMember);
+            L.d("CallingVM", "添加发起方自己到九宫格: " + currentUserId);
+            
+            // 然后添加被邀请的成员
             for (String memberId : memberIds) {
-                if (!memberId.equals(BaseApp.inst().loginCertificate.userID)) {
+                if (!memberId.equals(currentUserId)) {
                     GroupCallMember member = new GroupCallMember(memberId);
-                    member.setState(CallMemberState.INVITING);
+                    member.setState(CallMemberState.INVITING); // 被邀请成员初始状态为邀请中
                     groupMembers.add(member);
-                    L.v("CallingVM", "添加群组成员: " + memberId);
+                    L.d("CallingVM", "添加被邀请成员到九宫格: " + memberId);
                 }
             }
             

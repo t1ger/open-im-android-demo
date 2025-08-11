@@ -579,6 +579,18 @@ public class CallingServiceImp implements CallingService {
                         callDialog.getCallingVM().initializeGroupMembers(memberIds, groupId);
                         
                         android.util.Log.d("GroupCallFlow", "✅ [CallingService] 群组成员初始化完成: " + callDialog.getCallingVM().getGroupMembers().size() + " 个成员");
+                        
+                        // 🎯 修复时机问题：初始化完成后主动通知GroupCallDialog刷新成员列表
+                        if (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog) {
+                            Common.UIHandler.post(() -> {
+                                try {
+                                    ((io.openim.android.ouicalling.GroupCallDialog) callDialog).refreshMemberList();
+                                    android.util.Log.d("GroupCallFlow", "🔄 [CallingService] 已通知GroupCallDialog刷新成员列表");
+                                } catch (Exception e) {
+                                    android.util.Log.e("GroupCallFlow", "❌ [CallingService] 通知刷新失败: " + e.getMessage(), e);
+                                }
+                            });
+                        }
                     } else {
                         android.util.Log.e("GroupCallFlow", "❌ [CallingService] 群组通话信息不完整: groupId=" + groupId + ", memberIds=" + memberIds);
                     }
