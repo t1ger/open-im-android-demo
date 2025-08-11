@@ -90,7 +90,7 @@ public class GroupCallDialog extends BaseCallDialog implements GroupCallStateMan
         try {
             // 1. 创建群组成员适配器
             android.util.Log.e("GroupCallFlow", "🔧 [initUnifiedGridLayout] 创建GroupMemberAdapter");
-            memberAdapter = new GroupMemberAdapter(context, callingVM.getResourcePool(), callingVM.callViewModel);
+            memberAdapter = new GroupMemberAdapter(context, callingVM, null);
             android.util.Log.e("GroupCallFlow", "✅ [initUnifiedGridLayout] GroupMemberAdapter创建成功: " + (memberAdapter != null));
             
             // 2. 创建标准网格布局管理器（1x1开始，动态调整）
