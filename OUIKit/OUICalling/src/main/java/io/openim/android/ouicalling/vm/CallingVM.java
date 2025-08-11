@@ -1129,6 +1129,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
                 case "INVALID_STATE":
                     // 状态错误：重置群组状态
                     L.i("CallingVM", "检测到状态错误，重置群组通话状态");
+                    android.util.Log.e("GroupCallFlow", "🚨 [CRITICAL] 错误恢复中清空 groupMembers！原因：状态错误");
                     isGroupCall = false;
                     groupMembers.clear();
                     currentSpeaker = "";
@@ -1191,6 +1192,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             }
             
             // 重置群组状态
+            android.util.Log.e("GroupCallFlow", "🚨 [CRITICAL] cleanupGroupCall() 中清空 groupMembers！");
             isGroupCall = false;
             groupMembers.clear();
             currentSpeaker = "";
@@ -1266,6 +1268,15 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
 
     // === Getters for group call ===
     public List<GroupCallMember> getGroupMembers() {
+        // 🔍 调试日志：追踪 getGroupMembers() 调用
+        android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] getGroupMembers() 被调用，返回 " + groupMembers.size() + " 个成员");
+        if (groupMembers.size() == 0) {
+            android.util.Log.e("GroupCallFlow", "⚠️ [WARN] getGroupMembers() 返回空列表！调用堆栈:");
+            StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+            for (int i = 0; i < Math.min(stackTrace.length, 5); i++) {
+                android.util.Log.e("GroupCallFlow", "  " + i + ": " + stackTrace[i].toString());
+            }
+        }
         return new ArrayList<>(groupMembers);
     }
 
@@ -1677,6 +1688,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      */
     private void resetLocalState() {
         try {
+            android.util.Log.e("GroupCallFlow", "🚨 [CRITICAL] resetLocalState() 中清空 groupMembers！");
             groupMembers.clear();
             currentSpeaker = "";
             isGroupCall = false;
