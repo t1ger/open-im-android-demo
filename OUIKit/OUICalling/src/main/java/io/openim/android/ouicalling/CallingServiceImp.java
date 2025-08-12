@@ -398,78 +398,14 @@ public class CallingServiceImp implements CallingService {
         }
     }
 
-    /**
-     * 获取用于显示Dialog的Context
-     * 基于业界最佳实践：微信/钉钉/腾讯会议模式
-     * 
-     * 最佳实践原则：
-     * 1. 群组通话必须在当前活跃Activity上显示
-     * 2. 确保Activity在前台且未销毁
-     * 3. 优先使用真实Activity Context，避免ContextWrapper
-     * 4. 对特殊情况提供备用方案
-     */
     private Context getContext() {
-        android.util.Log.e("GroupCallFlow", "🔍 [上下文获取] 开始获取适合的Context");
-        
-        try {
-            // 策略1：获取当前活跃的Activity Context（微信模式）
-            if (!ActivityManager.getActivityStack().isEmpty()) {
-                Context topContext = ActivityManager.getActivityStack().peek();
-                android.util.Log.e("GroupCallFlow", "🔍 [上下文获取] 栈顶Context类型: " + topContext.getClass().getSimpleName());
-                
-                // 检查是否为真实Activity
-                if (topContext instanceof android.app.Activity) {
-                    android.app.Activity activity = (android.app.Activity) topContext;
-                    
-                    // 遵循最佳实践：检查Activity状态
-                    if (!activity.isFinishing() && !activity.isDestroyed()) {
-                        android.util.Log.e("GroupCallFlow", "✅ [上下文获取] 使用健康的Activity Context: " + activity.getClass().getSimpleName());
-                        return activity;
-                    } else {
-                        android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] Activity已销毁或正在销毁: " + activity.getClass().getSimpleName());
-                    }
-                }
-                
-                // 策略2：处理ContextThemeWrapper（钉钉模式）
-                if (topContext instanceof android.view.ContextThemeWrapper) {
-                    android.view.ContextThemeWrapper wrapper = (android.view.ContextThemeWrapper) topContext;
-                    Context baseContext = wrapper.getBaseContext();
-                    
-                    android.util.Log.e("GroupCallFlow", "🔍 [上下文获取] ContextThemeWrapper的BaseContext: " + baseContext.getClass().getSimpleName());
-                    
-                    // 检查BaseContext是否为健康的Activity
-                    if (baseContext instanceof android.app.Activity) {
-                        android.app.Activity baseActivity = (android.app.Activity) baseContext;
-                        if (!baseActivity.isFinishing() && !baseActivity.isDestroyed()) {
-                            android.util.Log.e("GroupCallFlow", "✅ [上下文获取] 使用ContextWrapper的BaseActivity: " + baseActivity.getClass().getSimpleName());
-                            return baseActivity;
-                        }
-                    }
-                    
-                    // 如果BaseContext不可用，但Wrapper本身可能可用
-                    android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] BaseContext不可用，尝试使用ContextThemeWrapper");
-                    return topContext; // 返回Wrapper本身
-                }
-                
-                // 策略3：其他类型Context的处理
-                android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] 非标准Activity Context，尝试使用: " + topContext.getClass().getSimpleName());
-                return topContext;
-            }
-            
-            // 策略4：备用方案 - Application Context（腾讯会议模式）
-            android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] Activity栈为空，使用Application Context");
-            Context appContext = BaseApp.inst();
-            
-            // 注意：Application Context显示Dialog需要特殊权限
-            android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] 使用Application Context显示Dialog需要TYPE_APPLICATION_OVERLAY权限");
-            return appContext;
-            
-        } catch (Exception e) {
-            android.util.Log.e("GroupCallFlow", "❌ [上下文获取] Context获取异常: " + e.getMessage(), e);
-            
-            // 异常情况下的安全备用
-            return BaseApp.inst();
+        Context ctx;
+        if (ActivityManager.getActivityStack().isEmpty())
+            ctx = BaseApp.inst();
+        else {
+            ctx = ActivityManager.getActivityStack().peek();
         }
+        return ctx;
     }
     
     /**
@@ -535,11 +471,11 @@ public class CallingServiceImp implements CallingService {
                 }
             }
             
-            // 关键修复：为非Activity Context设置正确的Window类型
-            if (!(context instanceof android.app.Activity) && callDialog.getWindow() != null) {
+            // 关键修复：只在使用Application Context时设置TYPE_APPLICATION_OVERLAY
+            if (context == BaseApp.inst() && callDialog.getWindow() != null) {
                 try {
                     callDialog.getWindow().setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
-                    L.d(TAG, "已设置TYPE_APPLICATION_OVERLAY");
+                    L.d(TAG, "使用Application Context，已设置TYPE_APPLICATION_OVERLAY");
                 } catch (Exception windowException) {
                     L.e(TAG, "Window类型设置失败", windowException);
                 }
@@ -603,7 +539,7 @@ public class CallingServiceImp implements CallingService {
         
         try {
             // 直接创建和显示通话界面
-            buildCallDialog(getActivityContext(), null, true);
+            buildCallDialog(getContext(), null, true);
             
             if (callDialog != null) {
                 android.util.Log.e("GroupCallFlow", "✅ [DEBUG] CallDialog创建成功，开始检查群组初始化条件");
@@ -639,6 +575,51 @@ public class CallingServiceImp implements CallingService {
                 callDialog.show();
                 L.d(TAG, "通话界面显示成功");
                 
+                // 🔍 [CRITICAL] 验证Dialog是否真的可见
+                android.util.Log.e("GroupCallFlow", "🔍🔍🔍 [CRITICAL] Dialog可见性验证开始");
+                
+                // 检查Dialog状态
+                android.util.Log.e("GroupCallFlow", "📱 [CRITICAL] callDialog.isShowing(): " + callDialog.isShowing());
+                
+                // 检查Window状态
+                if (callDialog.getWindow() != null) {
+                    android.util.Log.e("GroupCallFlow", "🪟 [CRITICAL] Window不为null");
+                    android.util.Log.e("GroupCallFlow", "🪟 [CRITICAL] Window.isActive(): " + callDialog.getWindow().isActive());
+                    
+                    // 检查Window属性
+                    android.view.WindowManager.LayoutParams params = callDialog.getWindow().getAttributes();
+                    if (params != null) {
+                        android.util.Log.e("GroupCallFlow", "⚙️ [CRITICAL] Window类型: " + params.type);
+                        android.util.Log.e("GroupCallFlow", "⚙️ [CRITICAL] Window标志: " + params.flags);
+                        android.util.Log.e("GroupCallFlow", "⚙️ [CRITICAL] 透明度: " + params.alpha);
+                        android.util.Log.e("GroupCallFlow", "⚙️ [CRITICAL] 宽度x高度: " + params.width + "x" + params.height);
+                    }
+                } else {
+                    android.util.Log.e("GroupCallFlow", "❌ [CRITICAL] Window为null！");
+                }
+                
+                // 延迟检查是否真的显示了
+                new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                    android.util.Log.e("GroupCallFlow", "⏰ [CRITICAL] 延迟500ms后检查Dialog状态");
+                    android.util.Log.e("GroupCallFlow", "📱 [CRITICAL] 延迟检查 - isShowing(): " + (callDialog != null && callDialog.isShowing()));
+                    
+                    // 尝试强制置顶
+                    if (callDialog != null && callDialog.getWindow() != null) {
+                        try {
+                            callDialog.getWindow().addFlags(
+                                android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON |
+                                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON |
+                                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED
+                            );
+                            android.util.Log.e("GroupCallFlow", "🔧 [CRITICAL] 已添加强制显示标志");
+                        } catch (Exception flagException) {
+                            android.util.Log.e("GroupCallFlow", "❌ [CRITICAL] 添加显示标志失败: " + flagException.getMessage());
+                        }
+                    }
+                }, 500);
+                
+                android.util.Log.e("GroupCallFlow", "✅✅✅ [CRITICAL] Dialog可见性验证结束");
+                
             } else {
                 android.util.Log.e("GroupCallFlow", "❌ [ERROR] CallDialog创建失败");
                 L.e(TAG, "Dialog创建失败");
@@ -664,13 +645,7 @@ public class CallingServiceImp implements CallingService {
         return callDialog != null && callDialog.isShowing();
     }
     
-    /**
-     * 获取正确的Context用于显示Dialog
-     */
-    private Context getActivityContext() {
-        // 使用Application Context，并通过Window类型解决显示问题
-        return BaseApp.inst();
-    }
+
 
     @Override
     public void onHangup(SignalingInfo s) {

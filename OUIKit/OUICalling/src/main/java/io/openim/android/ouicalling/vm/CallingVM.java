@@ -1393,7 +1393,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             // 🛡️ 关键修复：只有在成员列表为空时才初始化，避免覆盖CallingServiceImp已设置的数据
             if (groupMembers.isEmpty()) {
                 android.util.Log.e("GroupCallFlow", "🔄 [connectToGroupRoomAsCaller] 成员列表为空，执行初始化");
-                initializeGroupMembers(memberIds);
+                initializeGroupMembersPrivate(memberIds);
             } else {
                 android.util.Log.e("GroupCallFlow", "✅ [connectToGroupRoomAsCaller] 成员列表已存在 " + groupMembers.size() + " 个成员，跳过重复初始化");
             }
@@ -1444,7 +1444,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             // 🛡️ 关键修复：只有在成员列表为空时才初始化，避免覆盖已有数据
             if (groupMembers.isEmpty()) {
                 android.util.Log.e("GroupCallFlow", "🔄 [connectToGroupRoom] 成员列表为空，执行初始化");
-                initializeGroupMembers(memberIds);
+                initializeGroupMembersPrivate(memberIds);
             } else {
                 android.util.Log.e("GroupCallFlow", "✅ [connectToGroupRoom] 成员列表已存在 " + groupMembers.size() + " 个成员，跳过重复初始化");
             }
@@ -1770,14 +1770,14 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      * 初始化群组成员列表（私有实现）
      */
     private void initializeGroupMembersInternal(List<String> memberIds) {
-        initializeGroupMembers(memberIds);
+        initializeGroupMembersPrivate(memberIds);
     }
     
     /**
      * 初始化群组成员列表（原私有方法）
      * 🎯 核心修复：确保发起方自己也包含在九宫格成员列表中
      */
-    private void initializeGroupMembers(List<String> memberIds) {
+    private void initializeGroupMembersPrivate(List<String> memberIds) {
         try {
             groupMembers.clear();
             
