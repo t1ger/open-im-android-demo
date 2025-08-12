@@ -1,4 +1,4 @@
-package io.openim.android.ouicalling;
+    package io.openim.android.ouicalling;
 
 import android.app.Dialog;
 import android.app.Notification;
@@ -398,14 +398,78 @@ public class CallingServiceImp implements CallingService {
         }
     }
 
+    /**
+     * 获取用于显示Dialog的Context
+     * 基于业界最佳实践：微信/钉钉/腾讯会议模式
+     * 
+     * 最佳实践原则：
+     * 1. 群组通话必须在当前活跃Activity上显示
+     * 2. 确保Activity在前台且未销毁
+     * 3. 优先使用真实Activity Context，避免ContextWrapper
+     * 4. 对特殊情况提供备用方案
+     */
     private Context getContext() {
-        Context ctx;
-        if (ActivityManager.getActivityStack().isEmpty())
-            ctx = BaseApp.inst();
-        else {
-            ctx = ActivityManager.getActivityStack().peek();
+        android.util.Log.e("GroupCallFlow", "🔍 [上下文获取] 开始获取适合的Context");
+        
+        try {
+            // 策略1：获取当前活跃的Activity Context（微信模式）
+            if (!ActivityManager.getActivityStack().isEmpty()) {
+                Context topContext = ActivityManager.getActivityStack().peek();
+                android.util.Log.e("GroupCallFlow", "🔍 [上下文获取] 栈顶Context类型: " + topContext.getClass().getSimpleName());
+                
+                // 检查是否为真实Activity
+                if (topContext instanceof android.app.Activity) {
+                    android.app.Activity activity = (android.app.Activity) topContext;
+                    
+                    // 遵循最佳实践：检查Activity状态
+                    if (!activity.isFinishing() && !activity.isDestroyed()) {
+                        android.util.Log.e("GroupCallFlow", "✅ [上下文获取] 使用健康的Activity Context: " + activity.getClass().getSimpleName());
+                        return activity;
+                    } else {
+                        android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] Activity已销毁或正在销毁: " + activity.getClass().getSimpleName());
+                    }
+                }
+                
+                // 策略2：处理ContextThemeWrapper（钉钉模式）
+                if (topContext instanceof android.view.ContextThemeWrapper) {
+                    android.view.ContextThemeWrapper wrapper = (android.view.ContextThemeWrapper) topContext;
+                    Context baseContext = wrapper.getBaseContext();
+                    
+                    android.util.Log.e("GroupCallFlow", "🔍 [上下文获取] ContextThemeWrapper的BaseContext: " + baseContext.getClass().getSimpleName());
+                    
+                    // 检查BaseContext是否为健康的Activity
+                    if (baseContext instanceof android.app.Activity) {
+                        android.app.Activity baseActivity = (android.app.Activity) baseContext;
+                        if (!baseActivity.isFinishing() && !baseActivity.isDestroyed()) {
+                            android.util.Log.e("GroupCallFlow", "✅ [上下文获取] 使用ContextWrapper的BaseActivity: " + baseActivity.getClass().getSimpleName());
+                            return baseActivity;
+                        }
+                    }
+                    
+                    // 如果BaseContext不可用，但Wrapper本身可能可用
+                    android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] BaseContext不可用，尝试使用ContextThemeWrapper");
+                    return topContext; // 返回Wrapper本身
+                }
+                
+                // 策略3：其他类型Context的处理
+                android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] 非标准Activity Context，尝试使用: " + topContext.getClass().getSimpleName());
+                return topContext;
+            }
+            
+            // 策略4：备用方案 - Application Context（腾讯会议模式）
+            android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] Activity栈为空，使用Application Context");
+            Context appContext = BaseApp.inst();
+            
+            // 注意：Application Context显示Dialog需要特殊权限
+            android.util.Log.e("GroupCallFlow", "⚠️ [上下文获取] 使用Application Context显示Dialog需要TYPE_APPLICATION_OVERLAY权限");
+            return appContext;
+            
+        } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [上下文获取] Context获取异常: " + e.getMessage(), e);
+            
+            // 异常情况下的安全备用
+            return BaseApp.inst();
         }
-        return ctx;
     }
     
     /**
@@ -447,47 +511,10 @@ public class CallingServiceImp implements CallingService {
                 return callDialog;
             }
             
-            // 🔧 关键修复：先验证信令类型，避免被意外修改
-            String originalCallType = CallDialogFactory.getCallTypeDescription(signalingInfo);
-            L.critical(TAG, "✅ 原始信令类型: " + originalCallType);
-            android.util.Log.d("GroupCallFlow", "🔍 [buildCallDialog] 原始信令类型: " + originalCallType);
-            
-            // 调试输出：检查SessionType
-            if (signalingInfo.getInvitation() != null) {
-                L.critical(TAG, "📋 SessionType值: " + signalingInfo.getInvitation().getSessionType());
-                L.critical(TAG, "📋 GROUP_CHAT常量: " + ConversationType.GROUP_CHAT);
-                L.critical(TAG, "📋 SINGLE_CHAT常量: " + ConversationType.SINGLE_CHAT);
-                L.critical(TAG, "📋 GroupID: " + signalingInfo.getInvitation().getGroupID());
-                L.critical(TAG, "📋 InviteeList大小: " + (signalingInfo.getInvitation().getInviteeUserIDList() != null ? signalingInfo.getInvitation().getInviteeUserIDList().size() : "null"));
-                L.critical(TAG, "🔍 是否相等: " + (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT));
-                L.critical(TAG, "🔍 CallStateManager判断结果: " + CallStateManager.isGroupCall(signalingInfo));
-                
-                android.util.Log.d("GroupCallFlow", "📋 [buildCallDialog] SessionType: " + signalingInfo.getInvitation().getSessionType() + ", GROUP_CHAT: " + ConversationType.GROUP_CHAT + ", 是群组: " + CallStateManager.isGroupCall(signalingInfo));
-            }
-            
-            // ✅ 直接使用CallDialogFactory，跳过可能修改信令的SignalingProcessor
-            // 根因修复：SignalingProcessor可能在处理过程中修改原始信令的SessionType
+            // 创建通话对话框
             callDialog = CallDialogFactory.create(context, this, signalingInfo, isCallOut, dismissListener);
             
-            // 验证创建的对话框类型是否正确
-            String createdDialogType = callDialog.getClass().getSimpleName();
-            L.critical(TAG, "创建的对话框类型: " + createdDialogType);
-            android.util.Log.d("GroupCallFlow", "✅ [buildCallDialog] 创建的对话框类型: " + createdDialogType);
-            
-            // 如果群组信令却创建了单人对话框，记录关键调试信息
-            boolean isGroupSignaling = CallStateManager.isGroupCall(signalingInfo);
-            boolean isGroupDialog = createdDialogType.equals("GroupCallDialog");
-            if (isGroupSignaling && !isGroupDialog) {
-                L.e(TAG, "❌ 严重错误：群组信令创建了单人对话框！");
-                L.e(TAG, "调试信息 - SessionType: " + signalingInfo.getInvitation().getSessionType());
-                L.e(TAG, "调试信息 - GroupID: " + signalingInfo.getInvitation().getGroupID());
-                L.e(TAG, "调试信息 - InviteeList: " + signalingInfo.getInvitation().getInviteeUserIDList());
-                android.util.Log.e("GroupCallFlow", "❌ [buildCallDialog] 严重错误：群组信令创建了单人对话框！SessionType: " + signalingInfo.getInvitation().getSessionType());
-            } else if (isGroupSignaling && isGroupDialog) {
-                android.util.Log.d("GroupCallFlow", "✅ [buildCallDialog] 群组信令正确创建了GroupCallDialog");
-            } else if (!isGroupSignaling && !isGroupDialog) {
-                android.util.Log.d("GroupCallFlow", "✅ [buildCallDialog] 单人信令正确创建了SingleCallDialog");
-            }
+            L.d(TAG, "创建的对话框类型: " + callDialog.getClass().getSimpleName());
             
             L.businessFlow(TAG, "通话对话框创建", 
                 "类型: " + callDialog.getClass().getSimpleName() + 
@@ -508,32 +535,39 @@ public class CallingServiceImp implements CallingService {
                 }
             }
             
+            // 关键修复：为非Activity Context设置正确的Window类型
+            if (!(context instanceof android.app.Activity) && callDialog.getWindow() != null) {
+                try {
+                    callDialog.getWindow().setType(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY);
+                    L.d(TAG, "已设置TYPE_APPLICATION_OVERLAY");
+                } catch (Exception windowException) {
+                    L.e(TAG, "Window类型设置失败", windowException);
+                }
+            }
+            
             // 插入数据库记录（仅单人通话）
             insertCallHistoryRecord();
             
+            // buildCallDialog完成，已有businessFlow日志记录
+            
         } catch (CallDialogFactory.CallDialogCreationException e) {
-            // 📱 微信模式：显示用户友好的Toast提示
-            android.util.Log.e("GroupCallFlow", "❌ [CallingService] " + e.getCallType() + "创建失败: " + e.getMessage(), e);
+            L.e(TAG, e.getCallType() + "创建失败", e);
             LogExceptionHandler.handleException(TAG, e.getCallType() + "创建失败", 
                 LogExceptionHandler.ExceptionType.UI_ERROR, e);
             
-            // 显示类似微信的错误提示
             String errorMessage = e.isGroupCall() ? 
                 "群组通话暂时不可用，请稍后重试" : 
                 "通话功能暂时不可用，请稍后重试";
             
             showErrorToast(context, errorMessage);
-            
             return null;
             
         } catch (Exception e) {
-            // 其他未预期的异常
-            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 未知异常: " + e.getMessage(), e);
+            L.e(TAG, "buildCallDialog未知异常", e);
             LogExceptionHandler.handleException(TAG, "未知错误", 
                 LogExceptionHandler.ExceptionType.CRITICAL_ERROR, e);
             
             showErrorToast(context, "系统错误，请稍后重试");
-            
             return null;
         }
         
@@ -543,7 +577,6 @@ public class CallingServiceImp implements CallingService {
     @Override
     public void call(SignalingInfo signalingInfo) {
         L.businessFlow(TAG, "发起通话", "开始处理通话请求");
-        android.util.Log.d("GroupCallFlow", "📥 [CallingService] 接收到通话信令 - 开始处理");
         
         // 检查是否已有通话进行中
         if (isCallingTips()) {
@@ -557,269 +590,54 @@ public class CallingServiceImp implements CallingService {
         // 记录通话类型用于调试
         String callTypeDesc = CallDialogFactory.getCallTypeDescription(signalingInfo);
         L.businessFlow(TAG, "通话类型识别", callTypeDesc);
-        android.util.Log.d("GroupCallFlow", "🔍 [CallingService] 信令类型识别: " + callTypeDesc);
         
         try {
-            // 🎯 业界最佳实践：预初始化模式 - 在创建UI前先准备数据
-            android.util.Log.d("GroupCallFlow", "🚀 [PreInit] 预初始化模式开始 - 业界最佳实践");
+            // 直接创建和显示通话界面
+            buildCallDialog(getActivityContext(), null, true);
             
-            // 🔥 关键调试：检查为什么不显示九宫格界面
-            android.util.Log.e("GroupCallFlow", "🔍 [界面调试] signalingInfo: " + signalingInfo);
-            android.util.Log.e("GroupCallFlow", "🔍 [界面调试] invitation: " + (signalingInfo != null ? signalingInfo.getInvitation() : "signalingInfo为null"));
-            if (signalingInfo != null && signalingInfo.getInvitation() != null) {
-                android.util.Log.e("GroupCallFlow", "🔍 [界面调试] sessionType: " + signalingInfo.getInvitation().getSessionType());
-                android.util.Log.e("GroupCallFlow", "🔍 [界面调试] 预期GROUP_CHAT: " + ConversationType.GROUP_CHAT);
-                android.util.Log.e("GroupCallFlow", "🔍 [界面调试] 是否群组: " + (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT));
-            }
-            
-            // 检查是否为群组通话，如果是先初始化数据
-            if (signalingInfo.getInvitation() != null && 
-                signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT) {
-                
-                android.util.Log.e("GroupCallFlow", "✅ [界面调试] 确认为群组通话，应该创建九宫格界面！");
-                android.util.Log.d("GroupCallFlow", "🔧 [PreInit] 检测到群组通话，先初始化数据");
-                
-                // 提取群组通话信息
-                String groupId = signalingInfo.getInvitation().getGroupID();
-                List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
-                
-                android.util.Log.d("GroupCallFlow", "📋 [PreInit] 群组信息: groupId=" + groupId + ", memberCount=" + (memberIds != null ? memberIds.size() : 0));
-                
-                // 验证数据完整性
-                if (groupId == null || memberIds == null || memberIds.isEmpty()) {
-                    android.util.Log.e("GroupCallFlow", "❌ [PreInit] 群组通话信息不完整: groupId=" + groupId + ", memberIds=" + memberIds);
-                    return; // 数据不完整，直接返回
+            if (callDialog != null) {
+                // 群组通话初始化
+                if (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT) {
+                    List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
+                    String groupId = signalingInfo.getInvitation().getGroupID();
+                    
+                    if (memberIds != null && !memberIds.isEmpty()) {
+                        callDialog.getCallingVM().initializeGroupMembers(memberIds, groupId);
+                        L.d(TAG, "群组数据初始化: " + (memberIds.size() + 1) + "个成员");
+                    }
                 }
                 
-                // 🔥 关键改进：在创建Dialog前就初始化成员数据
-                // 预验证数据有效性 - 预期成员数量：发起者 + 被邀请者
-                int expectedMemberCount = memberIds.size() + 1; // +1 为发起者自己
+                // 显示Dialog
+                callDialog.show();
+                L.d(TAG, "通话界面显示成功");
                 
-                android.util.Log.d("GroupCallFlow", "✅ [PreInit] 预期成员数量: " + expectedMemberCount + " 个成员 (发起者+" + memberIds.size() + "被邀请者)");
-                
-                if (expectedMemberCount < 2) {
-                    android.util.Log.e("GroupCallFlow", "❌ [PreInit] 预期成员数不足，终止创建: " + expectedMemberCount);
-                    return;
-                }
-                
-                // 保存预验证数据供后续传递给Dialog
-                preInitializedGroupData = new PreInitializedGroupData(groupId, memberIds, expectedMemberCount);
+            } else {
+                L.e(TAG, "Dialog创建失败");
             }
-            
-            // 现在创建Dialog，此时群组数据已经准备好了
-            android.util.Log.d("GroupCallFlow", "🔧 [CallingService] 开始创建通话对话框 - 数据已就绪");
-            buildCallDialog(getContext(), null, true);
-            
-            if (callDialog == null) {
-                L.e(TAG, "通话对话框创建失败");
-                android.util.Log.e("GroupCallFlow", "❌ [CallingService] 通话对话框创建失败");
-                return;
-            }
-            
-            android.util.Log.e("GroupCallFlow", "✅ [界面调试] 创建的对话框类型: " + callDialog.getClass().getSimpleName());
-            android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框创建成功: " + callDialog.getClass().getSimpleName());
-            
-            // 🎯 传递预初始化数据给GroupCallDialog
-            android.util.Log.e("GroupCallFlow", "🔍 [界面调试] callDialog类型检查: " + (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog ? "是GroupCallDialog" : "不是GroupCallDialog，是" + callDialog.getClass().getSimpleName()));
-            if (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog && preInitializedGroupData != null) {
-                android.util.Log.d("GroupCallFlow", "🔄 [CallingService] 传递预初始化数据给GroupCallDialog");
-                
-                // 确保数据同步
-                callDialog.getCallingVM().initializeGroupMembers(preInitializedGroupData.memberIds, preInitializedGroupData.groupId);
-                
-                int finalMemberCount = callDialog.getCallingVM().getGroupMembers().size();
-                android.util.Log.d("GroupCallFlow", "✅ [CallingService] Dialog成员数据同步完成: " + finalMemberCount + " 个成员");
-                
-                // 🔥 [FINAL-UI-SYNC] 最终UI同步机制：确保数据完全就绪后再刷新UI
-                final io.openim.android.ouicalling.GroupCallDialog groupDialog = (io.openim.android.ouicalling.GroupCallDialog) callDialog;
-                
-                // 第1次刷新：立即刷新
-                Common.UIHandler.post(() -> {
-                    try {
-                        android.util.Log.e("GroupCallFlow", "🔥🔥 [FINAL-UI-SYNC-1] 立即UI刷新开始");
-                        groupDialog.refreshMemberList();
-                        android.util.Log.e("GroupCallFlow", "✅🔥 [FINAL-UI-SYNC-1] 立即UI刷新完成");
-                    } catch (Exception e) {
-                        android.util.Log.e("GroupCallFlow", "❌ [FINAL-UI-SYNC-1] 立即UI刷新失败: " + e.getMessage(), e);
-                    }
-                });
-                
-                // 第2次刷新：延迟200ms再次刷新（确保万无一失）
-                Common.UIHandler.postDelayed(() -> {
-                    try {
-                        android.util.Log.e("GroupCallFlow", "🔥🔥 [FINAL-UI-SYNC-2] 延迟UI刷新开始 - 200ms后");
-                        int memberCount = callDialog.getCallingVM().getGroupMembers().size();
-                        android.util.Log.e("GroupCallFlow", "📊 [FINAL-UI-SYNC-2] 当前成员数: " + memberCount);
-                        
-                        if (memberCount > 0) {
-                            groupDialog.refreshMemberList();
-                            android.util.Log.e("GroupCallFlow", "✅🔥 [FINAL-UI-SYNC-2] 延迟UI刷新完成 - 应显示 " + memberCount + " 个成员");
-                        } else {
-                            android.util.Log.e("GroupCallFlow", "❌ [FINAL-UI-SYNC-2] 成员数仍为0，需要进一步调试");
-                        }
-                    } catch (Exception e) {
-                        android.util.Log.e("GroupCallFlow", "❌ [FINAL-UI-SYNC-2] 延迟UI刷新失败: " + e.getMessage(), e);
-                    }
-                }, 200);
-            }
-            
-            // 在UI线程显示对话框
-            Common.UIHandler.post(() -> {
-                try {
-                    // 🔥🔥🔥 一次性全面调试 - 所有可能的根因 🔥🔥🔥
-                    android.util.Log.e("GroupCallFlow", "=== 开始全面调试界面显示问题 ===");
-                    
-                    // 1. 检查Dialog基本状态
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] callDialog类型: " + callDialog.getClass().getSimpleName());
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] callDialog是否为null: " + (callDialog == null));
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 显示前isShowing: " + callDialog.isShowing());
-                    
-                    // 2. 检查Window状态
-                    if (callDialog.getWindow() != null) {
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Window不为null");
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Window.isActive: " + callDialog.getWindow().isActive());
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Window属性: " + callDialog.getWindow().getAttributes());
-                    } else {
-                        android.util.Log.e("GroupCallFlow", "❌ [全面调试] Window为null！");
-                    }
-                    
-                    // 3. 检查Context状态
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Context: " + callDialog.getContext());
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Context类型: " + callDialog.getContext().getClass().getSimpleName());
-                    
-                    // 4. 执行显示
-                    android.util.Log.e("GroupCallFlow", "🚀 [全面调试] 开始执行 callDialog.show()");
-                    callDialog.show();
-                    android.util.Log.e("GroupCallFlow", "✅ [全面调试] callDialog.show() 执行完成");
-                    
-                    // 5. 检查显示后状态
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 显示后isShowing: " + callDialog.isShowing());
-                    
-                    // 6. 检查GroupCallDialog特有的视图状态
-                    if (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog) {
-                        io.openim.android.ouicalling.GroupCallDialog groupDialog = (io.openim.android.ouicalling.GroupCallDialog) callDialog;
-                        
-                        // 检查关键视图的可见性
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] === 检查GroupCallDialog视图状态 ===");
-                        
-                        try {
-                            // 通过反射获取关键视图（如果直接访问会报错的话）
-                            java.lang.reflect.Field[] fields = groupDialog.getClass().getDeclaredFields();
-                            for (java.lang.reflect.Field field : fields) {
-                                field.setAccessible(true);
-                                if (field.getName().equals("viewRenderers")) {
-                                    Object viewRenderers = field.get(groupDialog);
-                                    if (viewRenderers instanceof android.view.View) {
-                                        android.view.View view = (android.view.View) viewRenderers;
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] viewRenderers.getVisibility(): " + view.getVisibility());
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] viewRenderers.getWidth(): " + view.getWidth());
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] viewRenderers.getHeight(): " + view.getHeight());
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] viewRenderers.isShown(): " + view.isShown());
-                                    }
-                                }
-                                if (field.getName().equals("groupView")) {
-                                    Object groupView = field.get(groupDialog);
-                                    if (groupView instanceof android.view.View) {
-                                        android.view.View view = (android.view.View) groupView;
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] groupView.getVisibility(): " + view.getVisibility());
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] groupView.getWidth(): " + view.getWidth());
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] groupView.getHeight(): " + view.getHeight());
-                                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] groupView.isShown(): " + view.isShown());
-                                    }
-                                }
-                            }
-                        } catch (Exception reflectException) {
-                            android.util.Log.e("GroupCallFlow", "⚠️ [全面调试] 反射获取视图状态失败: " + reflectException.getMessage());
-                        }
-                        
-                        // 检查适配器状态
-                        try {
-                            int memberCount = callDialog.getCallingVM().getGroupMembers().size();
-                            android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 当前成员数量: " + memberCount);
-                        } catch (Exception memberException) {
-                            android.util.Log.e("GroupCallFlow", "❌ [全面调试] 获取成员数量失败: " + memberException.getMessage());
-                        }
-                    }
-                    
-                    // 7. 检查系统UI状态
-                    android.util.Log.e("GroupCallFlow", "🔍 [全面调试] === 检查系统UI状态 ===");
-                    android.app.Activity currentActivity = null;
-                    if (callDialog.getContext() instanceof android.app.Activity) {
-                        currentActivity = (android.app.Activity) callDialog.getContext();
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 当前Activity: " + currentActivity.getClass().getSimpleName());
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Activity.isFinishing(): " + currentActivity.isFinishing());
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] Activity.hasWindowFocus(): " + currentActivity.hasWindowFocus());
-                    }
-                    
-                    // 8. 延迟再次检查（排除时序问题）
-                    Common.UIHandler.postDelayed(() -> {
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] === 延迟500ms后再次检查 ===");
-                        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 延迟后isShowing: " + callDialog.isShowing());
-                        
-                        if (callDialog instanceof io.openim.android.ouicalling.GroupCallDialog) {
-                            // 再次检查视图状态
-                            try {
-                                java.lang.reflect.Field[] fields = callDialog.getClass().getDeclaredFields();
-                                for (java.lang.reflect.Field field : fields) {
-                                    field.setAccessible(true);
-                                    if (field.getName().equals("viewRenderers")) {
-                                        Object viewRenderers = field.get(callDialog);
-                                        if (viewRenderers instanceof android.view.View) {
-                                            android.view.View view = (android.view.View) viewRenderers;
-                                            android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 延迟后viewRenderers.isShown(): " + view.isShown());
-                                            android.util.Log.e("GroupCallFlow", "🔍 [全面调试] 延迟后viewRenderers尺寸: " + view.getWidth() + "x" + view.getHeight());
-                                        }
-                                    }
-                                }
-                            } catch (Exception e2) {
-                                android.util.Log.e("GroupCallFlow", "⚠️ [全面调试] 延迟检查失败: " + e2.getMessage());
-                            }
-                        }
-                        
-                        android.util.Log.e("GroupCallFlow", "=== 全面调试完成 ===");
-                    }, 500);
-                    
-                    L.businessFlow(TAG, "通话对话框显示", "成功");
-                    
-                    String memberInfo = "";
-                    if (callDialog.getCallingVM().isGroupCall()) {
-                        memberInfo = " - 成员数据已就绪: " + callDialog.getCallingVM().getGroupMembers().size() + " 个成员";
-                    } else {
-                        memberInfo = " - 单人通话";
-                    }
-                    
-                    android.util.Log.d("GroupCallFlow", "✅ [CallingService] 通话对话框显示成功" + memberInfo);
-                    
-                } catch (Exception e) {
-                    android.util.Log.e("GroupCallFlow", "❌ [全面调试] 显示过程异常: " + e.getMessage(), e);
-                    LogExceptionHandler.handleException(TAG, "显示通话对话框失败", 
-                        LogExceptionHandler.ExceptionType.UI_ERROR, e);
-                }
-            });
             
         } catch (Exception e) {
-            android.util.Log.e("GroupCallFlow", "❌ [CallingService] 处理通话请求失败: " + e.getMessage(), e);
-            LogExceptionHandler.handleException(TAG, "处理通话请求失败", 
-                LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
-        } finally {
-            // 清理预初始化数据
-            preInitializedGroupData = null;
+            L.e(TAG, "Service处理通话请求异常", e);
         }
     }
 
     public boolean isCallingTips() {
         boolean is = isCalling();
         if (is) {
-            Toast.makeText(getContext(), io.openim.android.ouicore.R.string.now_calling,
-                Toast.LENGTH_SHORT).show();
+            Toast.makeText(BaseApp.inst(), "正在通话中", Toast.LENGTH_SHORT).show();
         }
         return is;
     }
 
     public boolean isCalling() {
-        boolean result = null != callDialog && callDialog.isShowing();
-        android.util.Log.e("GroupCallFlow", "🔍 [全面调试] isCalling()检查: callDialog=" + (callDialog != null ? callDialog.getClass().getSimpleName() : "null") + ", isShowing=" + (callDialog != null ? callDialog.isShowing() : "N/A") + ", 结果=" + result);
-        return result;
+        return callDialog != null && callDialog.isShowing();
+    }
+    
+    /**
+     * 获取正确的Context用于显示Dialog
+     */
+    private Context getActivityContext() {
+        // 使用Application Context，并通过Window类型解决显示问题
+        return BaseApp.inst();
     }
 
     @Override
