@@ -347,11 +347,27 @@ public class CallingServiceImp implements CallingService {
     @Override
     public void onReceiveNewInvitation(SignalingInfo s) {
         L.e(TAG, "----onReceiveNewInvitation-----");
-        if (callDialog != null) return;
+        android.util.Log.e("CallFlow", "📨📨📨 [INVITE] 收到来电信令 - onReceiveNewInvitation");
+        
+        // 详细记录信令信息
+        if (s != null && s.getInvitation() != null) {
+            android.util.Log.e("CallFlow", "📨 [INVITE] 发起方: " + s.getInvitation().getInviterUserID());
+            android.util.Log.e("CallFlow", "📨 [INVITE] 檒体类型: " + s.getInvitation().getMediaType());
+            android.util.Log.e("CallFlow", "📨 [INVITE] 会话类型: " + s.getInvitation().getSessionType());
+            android.util.Log.e("CallFlow", "📨 [INVITE] 房间ID: " + s.getInvitation().getRoomID());
+        }
+        
+        if (callDialog != null) {
+            android.util.Log.e("CallFlow", "⚠️ [INVITE] 已有通话进行中，忽略新来电");
+            return;
+        }
+        
+        android.util.Log.e("CallFlow", "🚀 [INVITE] 开始处理来电信令");
         Context context = BaseApp.inst();
         Common.wakeUp(context);
         setSignalingInfo(s);
         isBeCalled = true;
+        android.util.Log.e("CallFlow", "✅ [INVITE] 基本状态设置完成 - isBeCalled=true");
 
         boolean isSystemAlert = new HasPermissions(BaseApp.inst(),
             Permission.SYSTEM_ALERT_WINDOW).isAllGranted();
@@ -380,19 +396,14 @@ public class CallingServiceImp implements CallingService {
 
                 NotificationUtil.sendNotify(A_NOTIFY_ID, notification);
             } else {
-                // 微信模式：安全创建和显示对话框
-                try {
-                    BaseCallDialog dialog = buildCallDialog(getContext(), null, false);
-                    if (dialog != null) {
-                        dialog.show();
-                        android.util.Log.d("GroupCallFlow", "✅ [CallingService] 对话框显示成功");
-                    } else {
-                        android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框为null，无法显示");
-                        // TODO: 显示系统通知或Toast提示
-                    }
-                } catch (Exception showException) {
-                    android.util.Log.e("GroupCallFlow", "❌ [CallingService] 对话框显示异常", showException);
-                    showErrorToast(getContext(), "通话功能暂时不可用，请稍后重试");
+                // 简化处理：直接显示Dialog（参考main分支的简洁实现）
+                android.util.Log.e("CallFlow", "🚀 [INVITE] 前台显示来电界面");
+                BaseCallDialog dialog = buildCallDialog(getContext(), null, false);
+                if (dialog != null) {
+                    dialog.show();
+                    android.util.Log.e("CallFlow", "✅ [INVITE] 来电界面显示成功");
+                } else {
+                    android.util.Log.e("CallFlow", "❌ [INVITE] Dialog创建失败");
                 }
             }
         }
