@@ -95,27 +95,52 @@ public class CallDialog extends BaseDialog {
      */
     public CallDialog(@NonNull Context context, CallingService callingService, boolean isCallOut) {
         super(context);
+        L.e("CallDialog", "========== CallDialog构造函数开始 ==========");
+        L.e("CallDialog", "Context: " + context.getClass().getSimpleName());
+        L.e("CallDialog", "isCallOut: " + isCallOut);
+        
         this.context = context;
+        
+        L.e("CallDialog", "检查权限...");
         hasShoot = new HasPermissions(context, Permission.CAMERA, Permission.RECORD_AUDIO);
         hasRecord = new HasPermissions(context, Permission.RECORD_AUDIO);
         hasSystemAlert = new HasPermissions(context, Permission.SYSTEM_ALERT_WINDOW);
+        L.e("CallDialog", "Camera+Record权限: " + hasShoot.isAllGranted());
+        L.e("CallDialog", "Record权限: " + hasRecord.isAllGranted());
+        L.e("CallDialog", "SystemAlert权限: " + hasSystemAlert.isAllGranted());
 
+        L.e("CallDialog", "创建CallingVM...");
         callingVM = new CallingVM(callingService, isCallOut);
+        L.e("CallDialog", "✅ CallingVM创建成功");
+        
         callingVM.setDismissListener(v -> {
+            L.e("CallDialog", "CallingVM请求关闭对话框");
             dismiss();
         });
+        
+        L.e("CallDialog", "设置参与者断开监听...");
         callingVM.callViewModel.subscribe(callingVM.callViewModel.getRoom().getEvents().getEvents(), (v) -> {
             if (v instanceof RoomEvent.ParticipantDisconnected
                 && v.getRoom().getRemoteParticipants().size() == 0) {
-                //当只有1个人时关闭会议
+                L.e("CallDialog", "所有远端参与者已断开，关闭会议");
                 dismiss();
             }
             return null;
         }, callingVM.scope);
 
+        L.e("CallDialog", "初始化状态机...");
         initSwitchStateMachine();
+        L.e("CallDialog", "✅ 状态机初始化完成");
+        
+        L.e("CallDialog", "初始化视图...");
         initView();
+        L.e("CallDialog", "✅ 视图初始化完成");
+        
+        L.e("CallDialog", "初始化渲染器视图...");
         initRendererView();
+        L.e("CallDialog", "✅ 渲染器视图初始化完成");
+        
+        L.e("CallDialog", "========== CallDialog构造函数完成 ==========");
     }
     
     /**
@@ -1040,8 +1065,32 @@ public class CallDialog extends BaseDialog {
 
     @Override
     public void show() {
-        playRingtone();
-        super.show();
+        L.e("CallDialog", "========== CallDialog.show() 开始 ==========");
+        L.e("CallDialog", "isGroupCall: " + isGroupCall);
+        L.e("CallDialog", "callingVM.isCallOut: " + callingVM.isCallOut);
+        L.e("CallDialog", "context: " + context.getClass().getSimpleName());
+        
+        try {
+            L.e("CallDialog", "播放铃声...");
+            playRingtone();
+            L.e("CallDialog", "✅ 铃声播放完成");
+            
+            L.e("CallDialog", "调用super.show()...");
+            super.show();
+            L.e("CallDialog", "✅ super.show()调用完成");
+            
+            // 检查显示状态
+            L.e("CallDialog", "Dialog.isShowing(): " + isShowing());
+            L.e("CallDialog", "Window: " + (getWindow() != null ? "valid" : "null"));
+            if (getWindow() != null) {
+                L.e("CallDialog", "Window.isActive(): " + getWindow().isActive());
+            }
+            
+        } catch (Exception e) {
+            L.e("CallDialog", "❌ show()发生异常", e);
+        }
+        
+        L.e("CallDialog", "========== CallDialog.show() 结束 ==========");
     }
 
     public void playRingtone() {

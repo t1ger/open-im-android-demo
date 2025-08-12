@@ -590,18 +590,28 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
     public void signalingHungUp(SignalingInfo signalingInfo) {
         L.e("CallingVM", "========== signalingHungUp执行 ==========");
         L.e("CallingVM", "isStartCall: " + isStartCall);
+        L.e("CallingVM", "isCallOut: " + isCallOut);
         L.e("CallingVM", "signalingInfo是否为空: " + (signalingInfo == null));
-        L.e("CallingVM", "18秒后将自动关闭UI");
         
         Common.UIHandler.postDelayed(this::dismissUI, 18 * 1000);
         
-        if (!isStartCall) {
-            L.e("CallingVM", "通话未开始，执行signalingCancel");
-            signalingCancel(signalingInfo);
+        // 🔧 修复信令发送错误：
+        // 发起方应该始终发送挂断信令(204)，不管通话是否已开始
+        // 只有被叫方在通话未开始时才发送拒绝信令(202)
+        if (!isStartCall && !isCallOut) {
+            // 被叫方：通话未开始时发送拒绝信令
+            L.e("CallingVM", "被叫方通话未开始，发送拒绝信令");
+            renewalDB(buildPrimaryKey(signalingInfo), (realm, v) -> v.setFailedState(3));
+            sendSignaling(Constants.MsgType.callingReject, signalingInfo, callBackDismissUI);
             return;
         }
         
-        L.e("CallingVM", "通话已开始，发送挂断信令");
+        // 发起方或通话已开始：发送挂断信令
+        L.e("CallingVM", "发送挂断信令 - isStartCall:" + isStartCall + ", isCallOut:" + isCallOut);
+        if (isCallOut && !isStartCall) {
+            // 发起方通话未开始：记录为取消状态但发送挂断信令
+            renewalDB(buildPrimaryKey(signalingInfo), (realm, v) -> v.setFailedState(1));
+        }
         sendSignaling(Constants.MsgType.callingHungup, signalingInfo, callBackDismissUI);
     }
 

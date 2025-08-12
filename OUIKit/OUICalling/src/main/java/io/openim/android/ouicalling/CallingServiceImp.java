@@ -86,25 +86,45 @@ public class CallingServiceImp implements CallingService {
 
     @Override
     public void onReceiveNewInvitation(SignalingInfo s) {
-        L.e(TAG, "----onReceiveNewInvitation-----");
+        L.e(TAG, "========== onReceiveNewInvitation 被呼叫方接收信令 ==========");
+        L.e(TAG, "SignalingInfo: " + (s != null ? "valid" : "null"));
+        if (s != null && s.getInvitation() != null) {
+            L.e(TAG, "RoomID: " + s.getInvitation().getRoomID());
+            L.e(TAG, "SessionType: " + s.getInvitation().getSessionType());
+            L.e(TAG, "MediaType: " + s.getInvitation().getMediaType());
+            L.e(TAG, "InviterUserID: " + s.getInvitation().getInviterUserID());
+            L.e(TAG, "InviteeList: " + s.getInvitation().getInviteeUserIDList());
+        }
         
-        if (callDialog != null) return;
+        if (callDialog != null) {
+            L.e(TAG, "⚠️ 已存在CallDialog，忽略新邀请");
+            return;
+        }
+        
         Context context = BaseApp.inst();
+        L.e(TAG, "Context: " + context.getClass().getSimpleName());
         Common.wakeUp(context);
         setSignalingInfo(s);
         isBeCalled = true;
 
         boolean isSystemAlert = new HasPermissions(BaseApp.inst(),
             Permission.SYSTEM_ALERT_WINDOW).isAllGranted();
+        L.e(TAG, "SystemAlert权限: " + isSystemAlert);
+        
         Intent hangIntent;
         boolean backgroundStart =
             BackgroundStartPermissions.INSTANCE.isBackgroundStartAllowed(context);
+        L.e(TAG, "BackgroundStart权限: " + backgroundStart);
+        L.e(TAG, "App是否在后台: " + BaseApp.inst().isAppBackground.val());
+        
         if (isSystemAlert && backgroundStart) {
+            L.e(TAG, "🔒 使用LockPushActivity显示通话");
             hangIntent =
                 new Intent(context, LockPushActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(hangIntent);
         } else {
             if (BaseApp.inst().isAppBackground.val()) {
+                L.e(TAG, "🔔 应用在后台，发送通知");
                 Postcard postcard = ARouter.getInstance().build(Routes.Main.HOME);
                 LogisticsCenter.completion(postcard);
                 hangIntent =
@@ -121,13 +141,19 @@ public class CallingServiceImp implements CallingService {
 
                 NotificationUtil.sendNotify(A_NOTIFY_ID, notification);
             } else {
+                L.e(TAG, "📱 应用在前台，直接显示通话界面");
                 // 🔧 修复：使用buildCallDialog方法创建适当的Dialog类型
                 CallDialog dialog = buildCallDialog(getContext(), null, false);
                 if (dialog != null) {
+                    L.e(TAG, "✅ CallDialog创建成功，isShowing: " + dialog.isShowing());
                     dialog.show();
+                    L.e(TAG, "✅ CallDialog.show()调用完成，当前isShowing: " + dialog.isShowing());
+                } else {
+                    L.e(TAG, "❌ CallDialog创建失败！");
                 }
             }
         }
+        L.e(TAG, "========== onReceiveNewInvitation 处理完成 ==========");
     }
 
     private Context getContext() {
@@ -153,19 +179,42 @@ public class CallingServiceImp implements CallingService {
     public CallDialog buildCallDialog(Context context,
                                   DialogInterface.OnDismissListener dismissListener,
                                   boolean isCallOut) {
+        L.e(TAG, "========== buildCallDialog 开始 ==========");
+        L.e(TAG, "Context: " + (context != null ? context.getClass().getSimpleName() : "null"));
+        L.e(TAG, "isCallOut: " + isCallOut);
+        L.e(TAG, "signalingInfo: " + (signalingInfo != null ? "valid" : "null"));
+        
         try {
-            if (callDialog != null) return callDialog;
+            if (callDialog != null) {
+                L.e(TAG, "CallDialog已存在，返回现有实例");
+                return callDialog;
+            }
+            
+            if (context == null) {
+                L.e(TAG, "❌ Context为null，无法创建Dialog");
+                return null;
+            }
+            
+            if (signalingInfo == null) {
+                L.e(TAG, "❌ SignalingInfo为null，无法创建Dialog");
+                return null;
+            }
             
             // 🎯 重点修复：根据SignalingInfo判断通话类型
             boolean isGroupCall = isGroupCall(signalingInfo);
+            L.e(TAG, "通话类型: " + (isGroupCall ? "群组通话" : "单人通话"));
             
             // 直接创建CallDialog，它已经支持群组通话
+            L.e(TAG, "开始创建CallDialog...");
             callDialog = new CallDialog(context, this, isCallOut);
-            L.d(TAG, "创建通话Dialog");
+            L.e(TAG, "✅ CallDialog创建成功");
             
+            L.e(TAG, "开始绑定数据...");
             callDialog.bindData(signalingInfo);
+            L.e(TAG, "✅ 数据绑定成功");
             
             if (!callDialog.callingVM.isCallOut) {
+                L.e(TAG, "设置被叫方监听器...");
                 callDialog.setOnDismissListener(dialog -> {
                     isBeCalled = false;
                     if (null != dismissListener) dismissListener.onDismiss(dialog);
@@ -173,14 +222,23 @@ public class CallingServiceImp implements CallingService {
                 if (!Common.isScreenLocked() && Common.hasSystemAlertWindow()) {
                     callDialog.setOnShowListener(dialog -> ARouter.getInstance().build(Routes.Main.HOME).navigation());
                 }
+                L.e(TAG, "✅ 被叫方监听器设置成功");
             }
             
+            L.e(TAG, "开始插入数据库记录...");
             insetDB();
+            L.e(TAG, "✅ 数据库记录完成");
             
         } catch (Exception e) {
-            L.e(TAG, "buildCallDialog异常", e);
-            if (!TextUtils.isEmpty(e.getMessage())) L.e(e.getMessage());
+            L.e(TAG, "❌ buildCallDialog发生异常", e);
+            L.e(TAG, "异常信息: " + e.getMessage());
+            if (e.getStackTrace() != null && e.getStackTrace().length > 0) {
+                L.e(TAG, "异常堆栈: " + e.getStackTrace()[0].toString());
+            }
+            callDialog = null; // 确保异常时清空
         }
+        
+        L.e(TAG, "========== buildCallDialog 结束，返回: " + (callDialog != null ? "valid" : "null") + " ==========");
         return callDialog;
     }
 
