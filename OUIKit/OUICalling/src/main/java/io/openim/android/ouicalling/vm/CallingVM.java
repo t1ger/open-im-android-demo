@@ -1382,13 +1382,21 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      */
     private void connectToGroupRoomAsCaller(SignalingCertificate certificate, SignalingInfo signalingInfo) {
         try {
+            android.util.Log.e("GroupCallFlow", "🎆 [connectToGroupRoomAsCaller] 开始执行");
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 连接前groupMembers数量: " + groupMembers.size());
+            
             L.d("CallingVM", "发起方连接群组房间");
             
             // 获取群组成员ID列表
             List<String> memberIds = extractGroupMemberIds(signalingInfo);
             
-            // 初始化群组成员列表
-            initializeGroupMembers(memberIds);
+            // 🛡️ 关键修复：只有在成员列表为空时才初始化，避免覆盖CallingServiceImp已设置的数据
+            if (groupMembers.isEmpty()) {
+                android.util.Log.e("GroupCallFlow", "🔄 [connectToGroupRoomAsCaller] 成员列表为空，执行初始化");
+                initializeGroupMembers(memberIds);
+            } else {
+                android.util.Log.e("GroupCallFlow", "✅ [connectToGroupRoomAsCaller] 成员列表已存在 " + groupMembers.size() + " 个成员，跳过重复初始化");
+            }
             
             // 设置发起方状态
             isStartCall = true;
@@ -1425,13 +1433,21 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      */
     private void connectToGroupRoom(SignalingCertificate certificate, SignalingInfo signalingInfo) {
         try {
+            android.util.Log.e("GroupCallFlow", "🎆 [connectToGroupRoom] 开始执行");
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 连接前groupMembers数量: " + groupMembers.size());
+            
             L.d("CallingVM", "开始连接群组房间");
             
             // 获取群组成员ID列表
             List<String> memberIds = extractGroupMemberIds(signalingInfo);
             
-            // 初始化群组成员列表先行
-            initializeGroupMembers(memberIds);
+            // 🛡️ 关键修复：只有在成员列表为空时才初始化，避免覆盖已有数据
+            if (groupMembers.isEmpty()) {
+                android.util.Log.e("GroupCallFlow", "🔄 [connectToGroupRoom] 成员列表为空，执行初始化");
+                initializeGroupMembers(memberIds);
+            } else {
+                android.util.Log.e("GroupCallFlow", "✅ [connectToGroupRoom] 成员列表已存在 " + groupMembers.size() + " 个成员，跳过重复初始化");
+            }
             
             // 群组通话使用标准connectToRoom方法，但保持群组业务逻辑
             Common.UIHandler.post(() -> {
