@@ -1573,27 +1573,44 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      */
     public void initializeGroupMembers(List<String> memberIds, String groupId) {
         try {
+            android.util.Log.e("GroupCallFlow", "🚀🚀🚀 [CallingVM] initializeGroupMembers(public) 开始");
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 初始化前 groupMembers 数量: " + groupMembers.size());
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 输入参数: memberIds.size=" + memberIds.size() + ", groupId=" + groupId);
+            
             L.d("CallingVM", "🔧 [Public API] 开始初始化群组成员: " + memberIds.size() + "个成员，群组ID: " + groupId);
             
             // 设置群组ID
             if (groupId != null) {
                 this.groupId = groupId;
                 this.groupRoomId = "group_call_" + groupId + "_" + System.currentTimeMillis();
+                android.util.Log.e("GroupCallFlow", "🏷️ [DEBUG] 设置groupId: " + this.groupId);
             }
             
+            android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] 准备初始化统一状态管理器");
             // 初始化统一状态管理器
             initializeUnifiedStateManager();
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 统一状态管理器初始化完成");
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 统一状态管理器初始化后 groupMembers 数量: " + groupMembers.size());
             
+            android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] 准备调用私有初始化方法");
             // 调用私有方法进行实际初始化
             initializeGroupMembersInternal(memberIds);
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 私有初始化方法调用完成");
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 私有初始化后 groupMembers 数量: " + groupMembers.size());
             
+            android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] 准备同步到统一状态管理器");
             // 同步到统一状态管理器
             syncToUnifiedStateManager(memberIds, groupId);
+            android.util.Log.e("GroupCallFlow", "✅ [DEBUG] 同步到统一状态管理器完成");
+            android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 同步后 groupMembers 数量: " + groupMembers.size());
+            
+            android.util.Log.e("GroupCallFlow", "🏁 [CallingVM] initializeGroupMembers(public) 结束 - 最终成员数: " + groupMembers.size());
             
             L.businessFlow("CallingVM", "群组成员初始化完成", 
                 "成员数: " + groupMembers.size() + ", 群组ID: " + groupId);
                 
         } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] initializeGroupMembers(public) 异常: " + e.getMessage(), e);
             LogExceptionHandler.handleException("CallingVM", "公开API初始化群组成员失败", 
                 LogExceptionHandler.ExceptionType.CALLING_ERROR, e);
         }
@@ -1700,7 +1717,24 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
      */
     private void resetLocalState() {
         try {
-            android.util.Log.e("GroupCallFlow", "🚨 [CRITICAL] resetLocalState() 中清空 groupMembers！");
+            android.util.Log.e("GroupCallFlow", "🚨🚨🚨 [CRITICAL] resetLocalState() 被调用！");
+            android.util.Log.e("GroupCallFlow", "📊 [CRITICAL] 当前groupMembers数量: " + groupMembers.size());
+            
+            // 输出调用堆栈
+            StackTraceElement[] stackTrace = Thread.currentThread().getStackTrace();
+            android.util.Log.e("GroupCallFlow", "🔍 [CRITICAL] resetLocalState调用堆栈:");
+            for (int i = 0; i < Math.min(10, stackTrace.length); i++) {
+                android.util.Log.e("GroupCallFlow", "  " + i + ": " + stackTrace[i].toString());
+            }
+            
+            // 🛡️ 安全检查：避免在初始化过程中清空数据
+            if (groupMembers.size() > 0) {
+                android.util.Log.e("GroupCallFlow", "⚠️ [CRITICAL] 拒绝清空groupMembers，当前有 " + groupMembers.size() + " 个成员");
+                android.util.Log.e("GroupCallFlow", "💡 [CRITICAL] 如果需要重置，请确认是正确的业务逻辑");
+                return;
+            }
+            
+            android.util.Log.e("GroupCallFlow", "🧹 [CRITICAL] 执行状态清空操作");
             groupMembers.clear();
             currentSpeaker = "";
             isGroupCall = false;
@@ -1711,6 +1745,7 @@ public class CallingVM implements CallViewModel.AudioDeviceCallback {
             L.d("CallingVM", "[状态重置] 本地状态已重置");
             
         } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [CRITICAL] resetLocalState异常: " + e.getMessage(), e);
             L.e("CallingVM", "[状态重置] 异常", e);
         }
     }

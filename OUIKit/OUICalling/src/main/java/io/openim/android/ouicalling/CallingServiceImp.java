@@ -591,20 +591,48 @@ public class CallingServiceImp implements CallingService {
         String callTypeDesc = CallDialogFactory.getCallTypeDescription(signalingInfo);
         L.businessFlow(TAG, "通话类型识别", callTypeDesc);
         
+        // 🔍 详细调试日志：检查SignalingInfo数据
+        android.util.Log.e("GroupCallFlow", "🔍🔍🔍 [CallingServiceImp] call()方法开始 - 详细数据检查");
+        android.util.Log.e("GroupCallFlow", "📧 [DEBUG] SignalingInfo: " + (signalingInfo != null ? "不为null" : "为null"));
+        if (signalingInfo != null && signalingInfo.getInvitation() != null) {
+            android.util.Log.e("GroupCallFlow", "📧 [DEBUG] SessionType: " + signalingInfo.getInvitation().getSessionType());
+            android.util.Log.e("GroupCallFlow", "📧 [DEBUG] GroupID: " + signalingInfo.getInvitation().getGroupID());
+            List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
+            android.util.Log.e("GroupCallFlow", "📧 [DEBUG] InviteeUserIDList: " + (memberIds != null ? (memberIds.size() + "个成员: " + memberIds) : "为null"));
+        }
+        
         try {
             // 直接创建和显示通话界面
             buildCallDialog(getActivityContext(), null, true);
             
             if (callDialog != null) {
+                android.util.Log.e("GroupCallFlow", "✅ [DEBUG] CallDialog创建成功，开始检查群组初始化条件");
+                
                 // 群组通话初始化
                 if (signalingInfo.getInvitation().getSessionType() == ConversationType.GROUP_CHAT) {
+                    android.util.Log.e("GroupCallFlow", "🎯 [DEBUG] 确认为群组通话，开始获取成员数据");
+                    
                     List<String> memberIds = signalingInfo.getInvitation().getInviteeUserIDList();
                     String groupId = signalingInfo.getInvitation().getGroupID();
                     
+                    android.util.Log.e("GroupCallFlow", "📋 [DEBUG] 获取到GroupID: " + groupId);
+                    android.util.Log.e("GroupCallFlow", "📋 [DEBUG] 获取到MemberIds: " + (memberIds != null ? (memberIds.size() + "个成员: " + memberIds) : "为null"));
+                    
                     if (memberIds != null && !memberIds.isEmpty()) {
+                        android.util.Log.e("GroupCallFlow", "🚀 [DEBUG] 开始调用initializeGroupMembers");
                         callDialog.getCallingVM().initializeGroupMembers(memberIds, groupId);
+                        android.util.Log.e("GroupCallFlow", "✅ [DEBUG] initializeGroupMembers调用完成");
                         L.d(TAG, "群组数据初始化: " + (memberIds.size() + 1) + "个成员");
+                        
+                        // 验证数据是否正确设置
+                        android.util.Log.e("GroupCallFlow", "🔍 [DEBUG] 验证initializeGroupMembers是否生效");
+                        List<?> currentMembers = callDialog.getCallingVM().getGroupMembers();
+                        android.util.Log.e("GroupCallFlow", "📊 [DEBUG] 当前CallingVM中的成员数量: " + (currentMembers != null ? currentMembers.size() : "null"));
+                    } else {
+                        android.util.Log.e("GroupCallFlow", "❌ [ERROR] MemberIds为空或null，无法初始化群组成员");
                     }
+                } else {
+                    android.util.Log.e("GroupCallFlow", "ℹ️ [INFO] 非群组通话，跳过群组成员初始化");
                 }
                 
                 // 显示Dialog
@@ -612,12 +640,16 @@ public class CallingServiceImp implements CallingService {
                 L.d(TAG, "通话界面显示成功");
                 
             } else {
+                android.util.Log.e("GroupCallFlow", "❌ [ERROR] CallDialog创建失败");
                 L.e(TAG, "Dialog创建失败");
             }
             
         } catch (Exception e) {
+            android.util.Log.e("GroupCallFlow", "❌ [ERROR] call()方法异常: " + e.getMessage(), e);
             L.e(TAG, "Service处理通话请求异常", e);
         }
+        
+        android.util.Log.e("GroupCallFlow", "🏁 [CallingServiceImp] call()方法结束");
     }
 
     public boolean isCallingTips() {
